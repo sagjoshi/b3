@@ -8,80 +8,65 @@ module FunctionDesugaring {
   import opened Ast
   import opened Std.Wrappers
   import opened Basics
+  import Raw = RawAst
 
   export
-    provides Desugar
+    provides CreateInverseAndTagFunctions, DefinitionAxiom
+    reveals ValidFunctionsAndAxioms
     provides Ast, Wrappers
 
-  method Desugar(b3: Program) returns (r: Result<Program, string>)
-    requires b3.WellFormed()
-    modifies b3.functions
-    ensures r.Success? ==> var r3 := r.value;
-      && b3.types == r3.types
-      && b3.functions <= r3.functions
-      && b3.axioms <= r3.axioms
-      && b3.procedures == r3.procedures
-      && r3.WellFormed()
-  {
-    var functions := b3.functions;
-    var axioms := b3.axioms;
-
-    for i := 0 to |b3.functions|
-      invariant GoodExtension(b3.functions, b3.axioms, functions, axioms)
-    {
-      var func := b3.functions[i];
-
-      var rr :- AddInverseFunctions(func, b3.functions, b3.axioms, functions, axioms);
-      functions, axioms := rr.0, rr.1;
-
-      if func.Tag.Some? {
-        rr :- AddFunctionTag(func, b3.functions, b3.axioms, functions, axioms);
-        functions, axioms := rr.0, rr.1;
-      }
-
-      if func.Definition.Some? {
-        var axiom := DefinitionAxiom(func);
-        axioms := axioms + [axiom];
-      }
-    }
-
-    return Success(Program(b3.types, functions, axioms, b3.procedures));
-  }
-
-  ghost predicate GoodExtension(origFunctions: seq<Function>, origAxioms: seq<Axiom>, functions: seq<Function>, axioms: seq<Axiom>)
+  ghost predicate ValidFunctionsAndAxioms(functions: seq<Function>, axioms: seq<Axiom>)
     reads functions
   {
-    // the new extends the old
-    && origFunctions <= functions
-    && origAxioms <= axioms
-    // properies needed to show the new program is well-formed
-    && (forall func0 <- functions, func1 <- functions :: func0.Name == func1.Name ==> func0 == func1)
     && (forall func <- functions :: func.WellFormed())
     && (forall axiom <- axioms :: axiom.WellFormed())
   }
 
-  method AddInverseFunctions(func: Function, ghost origFunctions: seq<Function>, ghost origAxioms: seq<Axiom>,
-                             functions_in: seq<Function>, axioms_in: seq<Axiom>)
-      returns (r: Result<(seq<Function>, seq<Axiom>), string>)
-    requires func in origFunctions
-    requires GoodExtension(origFunctions, origAxioms, functions_in, axioms_in)
+  method CreateInverseAndTagFunctions(func: Function) returns (functions: seq<Function>, axioms: seq<Axiom>)
+    requires forall i, j :: 0 <= i < j < |func.Parameters| ==> func.Parameters[i].name != func.Parameters[j].name
+    requires func.Tag.Some? ==> var tagger := func.Tag.value; |tagger.Parameters| == 1 && tagger.Parameters[0].typ == func.ResultType
     modifies func`ExplainedBy
-    ensures r.Success? ==> GoodExtension(origFunctions, origAxioms, r.value.0, r.value.1)
+    ensures ValidFunctionsAndAxioms(functions, axioms)
+    ensures fresh(functions) && fresh(axioms)
   {
-    var functions, axioms := functions_in, axioms_in;
+    functions, axioms := CreateInverseFunctions(func);
+    if func.Tag.Some? {
+      var ff, aa := CreateFunctionTag(func);
+      functions := functions + ff;
+      axioms := axioms + aa;
+    }
+  }
+
+
+  method CreateInverseFunctions(func: Function) returns (functions: seq<Function>, axioms: seq<Axiom>)
+    requires forall i, j :: 0 <= i < j < |func.Parameters| ==> func.Parameters[i].name != func.Parameters[j].name
+    modifies func`ExplainedBy
+    ensures ValidFunctionsAndAxioms(functions, axioms)
+    ensures fresh(functions) && fresh(axioms)
+  {
+    functions, axioms := [], [];
 
     for j := 0 to |func.Parameters|
-      invariant GoodExtension(origFunctions, origAxioms, functions, axioms)
+      invariant forall f <- functions :: exists i :: 0 <= i < j && f.Name == CombineNames(func.Name, func.Parameters[i].name)
+      invariant ValidFunctionsAndAxioms(functions, axioms)
+      invariant fresh(functions) && fresh(axioms)
     {
       var param := func.Parameters[j];
       if param.injective {
         var name := CombineNames(func.Name, param.name);
-        if exists f <- functions :: f.Name == name { // TODO: improve the efficiency of this; there may be a lot of functions in the input, so this matters
-          var msg: string := "function '" + name + "' generated from injective function parameter '" + param.name + "' clashes with an already declared function with that name";
-          return Result<(seq<Function>, seq<Axiom>), string>.Failure(msg);
+        forall f <- functions
+          ensures f.Name != name
+        {
+          var i :| 0 <= i < j && f.Name == CombineNames(func.Name, func.Parameters[i].name);
+          var prefixLen := |func.Name| + 1;
+          assert f.Name[prefixLen..] == func.Parameters[i].name != func.Parameters[j].name == name[prefixLen..];
         }
+
+        Raw.SurelyLegalVariableName("subject");
         var parameter := new FParameter("subject", false, func.ResultType);
         var inverseFunction := new Function(name, [parameter], param.typ, None);
+        assert inverseFunction.WellFormed();
+
         functions := functions + [inverseFunction];
 
         // injectivity axiom:
@@ -92,35 +77,26 @@ module FunctionDesugaring {
         var boundVars, pattern, lhs := GenerateAxiomPieces(func, Some(inverseFunction), false);
         var rhs := IdExpr(boundVars[j]);
         var axiom := AssembleAxiom(func, boundVars, pattern, None, lhs, rhs);
+        assert axiom.WellFormed();
         axioms := axioms + [axiom];
       }
     }
-
-    return Success((functions, axioms));
   }
 
-  method AddFunctionTag(func: Function, ghost origFunctions: seq<Function>, ghost origAxioms: seq<Axiom>,
-                        functions_in: seq<Function>, axioms_in: seq<Axiom>)
-      returns (r: Result<(seq<Function>, seq<Axiom>), string>)
-    requires func in origFunctions && func.WellFormed() && func.Tag.Some?
-    requires GoodExtension(origFunctions, origAxioms, functions_in, axioms_in)
+  method CreateFunctionTag(func: Function) returns (functions: seq<Function>, axioms: seq<Axiom>)
+    requires func.Tag.Some? && var tagger := func.Tag.value; |tagger.Parameters| == 1 && tagger.Parameters[0].typ == func.ResultType
     modifies func`ExplainedBy
-    ensures r.Success? ==> GoodExtension(origFunctions, origAxioms, r.value.0, r.value.1)
+    ensures ValidFunctionsAndAxioms(functions, axioms)
+    ensures fresh(functions) && fresh(axioms)
   {
-    var functions, axioms := functions_in, axioms_in;
+    functions, axioms := [], [];
 
     var name := CombineNames(func.Name, "tag");
-    if exists f: Function <- functions :: f.Name == name { // TODO: improve the efficiency of this; there may be a lot of functions in the input, so this matters
-      var msg: string := "function '" + name + "' generated from the `tag` clause of function '" + func.Name + "' clashes with an already declared function with that name";
-      return Result<(seq<Function>, seq<Axiom>), string>.Failure(msg);
-    }
 
     // function F.tag(): tag { %tag }
-    var Ftag := new Function(name, [], Types.TagType, None);
-    Ftag.Definition := Some(FunctionDefinition([], CustomLiteral("%tag", Types.TagType)));
+    var Ftag := new Function(name, [], TagType, None);
+    Ftag.Definition := Some(FunctionDefinition([], CustomLiteral("%tag", TagType)));
     functions := functions + [Ftag];
-    var axiom := DefinitionAxiom(Ftag);
-    axioms := axioms + [axiom];
 
     // tag declarations, here shown for function F(x: X, y: Y): S tag G
     // axiom explains F
@@ -128,10 +104,8 @@ module FunctionDesugaring {
     //     G(F(x, y)) == F.tag()
     var boundVars, pattern, lhs := GenerateAxiomPieces(func, Some(func.Tag.value), false);
     var rhs := FunctionCallExpr(Ftag, []);
-    axiom := AssembleAxiom(func, boundVars, pattern, None, lhs, rhs);
+    var axiom := AssembleAxiom(func, boundVars, pattern, None, lhs, rhs);
     axioms := axioms + [axiom];
-
-    return Success((functions, axioms));
   }
 
   // Given "func" as "function F(x: X, y: Y): S when W { Body }", generate
@@ -147,6 +121,7 @@ module FunctionDesugaring {
     requires func.WellFormed() && func.Definition.Some?
     modifies func`ExplainedBy
     ensures axiom.WellFormed()
+    ensures fresh(axiom)
   {
     var def := func.Definition.value;
 
@@ -208,7 +183,7 @@ module FunctionDesugaring {
     requires antecedent.Some? ==> antecedent.value.WellFormed()
     requires lhs.WellFormed() && rhs.WellFormed()
     modifies func`ExplainedBy
-    ensures axiom.WellFormed()
+    ensures fresh(axiom) && axiom.WellFormed()
   {
     var body := OperatorExpr(Operator.Eq, [lhs, rhs]);
     if antecedent.Some? {

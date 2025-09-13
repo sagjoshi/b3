@@ -178,8 +178,17 @@ module RawAst {
   }
 
   predicate LegalVariableName(name: string) {
-    !("_" <= name) &&
-    !(OldPrefix <= name)
+    && name != []
+    && !("_" <= name)
+    && !(OldPrefix <= name)
+    && name != "tag"
+  }
+
+  // This lemma gives easy ways to prove that a string is legal as a variable name.
+  lemma SurelyLegalVariableName(name: string)
+    requires name != [] && name[0] == 's'
+    ensures LegalVariableName(name)
+  {
   }
 
   // Statements

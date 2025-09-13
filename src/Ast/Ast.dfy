@@ -14,9 +14,9 @@ module Ast {
     reveals Program.WellFormed, Procedure.WellFormed, Parameter.WellFormed, AExpr.WellFormed, Stmt.WellFormed, Expr.WellFormed, CallArgument.WellFormed
     reveals CallArgument.CorrespondingMode
     provides Procedure.Parameters, Procedure.Pre, Procedure.Post, Procedure.Body
-    reveals Procedure.SignatureWellFormed, Procedure.WellFormedHeader
+    reveals Procedure.SignatureCorrespondence, Procedure.WellFormedHeader
     reveals Function, FParameter, FunctionDefinition
-    reveals Function.SignatureWellFormed, Function.WellFormed, Function.WellFormedAsTagger, FParameter.WellFormed, FunctionDefinition.WellFormed
+    reveals Function.SignatureCorrespondence, Function.SignatureWellFormed, Function.WellFormed, Function.WellFormedAsTagger, FParameter.WellFormed, FunctionDefinition.WellFormed
     provides Function.Parameters, Function.ResultType, Function.Tag, Function.Definition, Function.ExplainedBy, FParameter.injective
     reveals Axiom, Axiom.WellFormed
     provides Axiom.Explains, Axiom.Expr
@@ -70,10 +70,10 @@ module Ast {
       reads procedures, functions
     {
       // type declarations have distinct names
-      && (forall typ0 <- types, typ1 <- types :: typ0.Name == typ1.Name ==> typ0 == typ1)
+      && NamedDecl.Distinct(types)
 
       // function declarations have distinct names
-      && (forall func0 <- functions, func1 <- functions :: func0.Name == func1.Name ==> func0 == func1)
+      && NamedDecl.Distinct(functions)
       // function are well-formed
       && (forall func <- functions :: func.WellFormed())
 
@@ -81,7 +81,7 @@ module Ast {
       && (forall axiom <- axioms :: axiom.WellFormed())
 
       // procedure declarations have distinct names
-      && (forall proc0 <- procedures, proc1 <- procedures :: proc0.Name == proc1.Name ==> proc0 == proc1)
+      && NamedDecl.Distinct(procedures)
       // procedures are well-formed
       && (forall proc <- procedures :: proc.WellFormed())
     }
@@ -96,8 +96,7 @@ module Ast {
     function DeclToString(): string
   }
 
-  class Procedure {
-    const Name: string
+  class Procedure extends NamedDecl {
     const Parameters: seq<Parameter>
     const Pre: seq<AExpr>
     const Post: seq<AExpr>
@@ -112,7 +111,7 @@ module Ast {
       Body := None; // this is set after construction
     }
 
-    ghost predicate SignatureWellFormed(proc: Raw.Procedure) {
+    ghost predicate SignatureCorrespondence(proc: Raw.Procedure) {
       && Name == proc.name
       && (forall formal <- Parameters :: Raw.LegalVariableName(formal.name))
       && (forall i, j :: 0 <= i < j < |Parameters| ==> Parameters[i].name != Parameters[j].name)
@@ -164,8 +163,7 @@ module Ast {
 
   type ParameterMode = Raw.ParameterMode
 
-  class Function extends DeclarationMarker {
-    const Name: string
+  class Function extends NamedDecl, DeclarationMarker {
     const Parameters: seq<FParameter>
     const ResultType: Type
     const Tag: Option<Function>
@@ -184,32 +182,34 @@ module Ast {
       ExplainedBy := [];
     }
 
-    ghost predicate SignatureWellFormed(func: Raw.Function) {
+    predicate SignatureCorrespondence(func: Raw.Function) {
       && Name == func.name
-      && (forall formal <- Parameters :: Raw.LegalVariableName(formal.name))
-      && (forall i, j :: 0 <= i < j < |Parameters| ==> Parameters[i].name != Parameters[j].name)
       && |Parameters| == |func.parameters|
       && (forall i :: 0 <= i < |Parameters| ==> Parameters[i].name == func.parameters[i].name)
       && (forall i :: 0 <= i < |Parameters| ==> Parameters[i].injective == func.parameters[i].injective)
-      && (forall i :: 0 <= i < |Parameters| ==> Parameters[i].WellFormed())
       && (if func.tag == None then Tag == None else Tag.Some? && Tag.value.Name == func.tag.value)
+    }
+
+    predicate SignatureWellFormed() {
+      && (forall i :: 0 <= i < |Parameters| ==> Parameters[i].WellFormed())
+      && (forall i, j :: 0 <= i < j < |Parameters| ==> Parameters[i].name != Parameters[j].name)
       && (Tag.Some? ==> var tagger := Tag.value; |tagger.Parameters| == 1 && tagger.Parameters[0].typ == ResultType)
     }
 
     predicate WellFormed()
       reads this
     {
-      && (forall i :: 0 <= i < |Parameters| ==> Parameters[i].WellFormed())
-      && (forall i, j :: 0 <= i < j < |Parameters| ==> Parameters[i].name != Parameters[j].name)
+      && SignatureWellFormed()
       && (Definition == None || Definition.value.WellFormed())
-      && (Tag.Some? ==> var tagger := Tag.value; |tagger.Parameters| == 1 && tagger.Parameters[0].typ == ResultType)
     }
 
     predicate WellFormedAsTagger()
       reads this
     {
       && WellFormed()
+      && Tag == None
       && |Parameters| == 1
+      && !Parameters[0].injective
       && ResultType == TagType
     }
   }
@@ -233,7 +233,7 @@ module Ast {
     }
 
     predicate WellFormed() {
-      true
+      Raw.LegalVariableName(name)
     }
 
     predicate IsMutable() {
