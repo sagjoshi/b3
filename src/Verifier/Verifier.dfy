@@ -327,7 +327,7 @@ module Verifier {
           postMap := postMap[formal.oldInOut.value := incomingIncarnation];
         }
         var freshIncarnation;
-        incarnations, freshIncarnation := incarnations.Update(formal);
+        incarnations, freshIncarnation := incarnations.Update(v);
         postMap := postMap[formal := freshIncarnation];
     }
     var preIncarnations := incarnations.CreateSubMap(preMap);

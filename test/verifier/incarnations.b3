@@ -1,0 +1,19 @@
+// RUN: %b3 verify "%s" --print-incarnations > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+// Note. The Incarnations.Print method is nondeterministic, so it may print lines in a different order.
+// If this becomes an issue, this test should be changed or the implementation of Incarnations.Print should
+// be changed to be deterministic.
+
+procedure Test() {
+  var a: int
+  var b: int
+  var c: int
+  Callee(a + a, inout b, out c)
+  assert IsPrime(c)
+}
+
+procedure Callee(inFormal: int, inout inoutFormal: int, out outFormal: int)
+  ensures IsPrime(outFormal)
+
+function IsPrime(x: int): bool
