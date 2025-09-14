@@ -336,7 +336,9 @@ module RSolvers {
       modifies Repr
       ensures Valid()
     {
-      PrintProofObligation(context, expr);
+      if "show-proof-obligations" in Options {
+        PrintProofObligation(context, expr);
+      }
       SetContext(context);
 
       state.Push(context); // do another Push; the parameter here is irrelevant and will soon be popped off again
