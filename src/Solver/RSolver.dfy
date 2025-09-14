@@ -16,7 +16,7 @@ module RSolvers {
     provides RExpr.Eq, RExpr.Operator2ROperator, RExpr.OperatorToString
     provides RContext, CreateEmptyContext, Extend, ExtendWithEquality, Record
     reveals REngine
-    provides CreateEngine, REngine.Repr, REngine.Valid, REngine.Prove
+    provides CreateEngine, REngine.Repr, REngine.Valid, REngine.Prove, REngine.Options
     provides SolverExpr, Solvers, Ast, CLI, Wrappers
 
   // ===== RExpr =====
@@ -303,6 +303,7 @@ module RSolvers {
     ghost const Repr: set<object>
     const state: Solvers.SolverState<RContext>
     const axiomMap: map<Ast.Axiom, RExpr>
+    const Options: CLI.CliOptions
 
     ghost predicate Valid()
       reads Repr
@@ -314,12 +315,13 @@ module RSolvers {
     }
 
     // This constructor is given a name, so that it doesn't automatically get exported just because the class is revealed
-    constructor New(state: Solvers.SolverState<RContext>, axiomMap: map<Ast.Axiom, RExpr>)
+    constructor New(state: Solvers.SolverState<RContext>, axiomMap: map<Ast.Axiom, RExpr>, options: CLI.CliOptions)
       requires state.Valid()
       ensures Valid() && fresh(Repr - state.Repr)
     {
       this.state := state;
       this.axiomMap := axiomMap;
+      this.Options := options;
       Repr := {this} + state.Repr;
     }
 
@@ -501,11 +503,11 @@ module RSolvers {
     }
   }
 
-  method CreateEngine(axiomMap: map<Ast.Axiom, RExpr>, cli: CLI.CliResult) returns (r: REngine)
+  method CreateEngine(axiomMap: map<Ast.Axiom, RExpr>, options: CLI.CliOptions) returns (r: REngine)
     ensures r.Valid() && fresh(r.Repr)
   {
-    var z3 := ExternalSolvers.Create(ExternalSolvers.Z3, "solver-log" in cli.options);
+    var z3 := ExternalSolvers.Create(ExternalSolvers.Z3, "solver-log" in options);
     var state := new Solvers.SolverState(z3);
-    r := new REngine.New(state, axiomMap);
+    r := new REngine.New(state, axiomMap, options);
   }
 }

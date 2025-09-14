@@ -3,7 +3,7 @@ module CommandLineOptions {
   import opened Basics
 
   export
-    reveals Syntax, OptionInfo, CliResult
+    reveals Syntax, OptionInfo, CliResult, CliOptions
     provides Syntax.ToolName, Syntax.GetVerbs, Syntax.GetOptionInfo
     provides Parse
     provides Wrappers
@@ -20,9 +20,11 @@ module CommandLineOptions {
     | Unknown
     | ArgumentCount(n: nat)
 
-  datatype CliResult<Verb> = CliResult(verb: Verb, options: map<string, seq<string>>, files: seq<string>)
+  type CliOptions = map<string, seq<string>>
 
-  method Parse<Verb>(syntax: Syntax<Verb>, args: seq<string>) returns (result: Result<CliResult, string>) {
+  datatype CliResult<Verb> = CliResult(verb: Verb, options: CliOptions, files: seq<string>)
+
+  method Parse<Verb>(syntax: Syntax<Verb>, args: seq<string>) returns (result: Result<CliResult<Verb>, string>) {
     if |args| < 2 {
       return Failure("Usage: " + syntax.ToolName + " <verb> <options> <filenames>");
     }

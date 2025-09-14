@@ -16,7 +16,7 @@ module Verifier {
     provides Verify
     provides Ast, AstValid, CLI, StaticConsistency
 
-  method Verify(b3: Ast.Program, cli: CLI.CliResult)
+  method Verify(b3: Ast.Program, options: CLI.CliOptions)
     requires AstValid.Program(b3)
   {
     // Create STypeDecl and SConstant declarations for the B3 types, taggers, and functions
@@ -59,14 +59,14 @@ module Verifier {
     for i := 0 to |b3.procedures| {
       var proc := b3.procedures[i];
       print "Verifying ", proc.Name, " ...\n";
-      VerifyProcedure(proc, context, declMap, axiomMap, cli);
+      VerifyProcedure(proc, context, declMap, axiomMap, options);
     }
   }
 
-  method VerifyProcedure(proc: Ast.Procedure, context_in: RSolvers.RContext, declMap: I.DeclMappings, axiomMap: map<Axiom, RSolvers.RExpr>, cli: CLI.CliResult)
+  method VerifyProcedure(proc: Ast.Procedure, context_in: RSolvers.RContext, declMap: I.DeclMappings, axiomMap: map<Axiom, RSolvers.RExpr>, options: CLI.CliOptions)
     requires AstValid.Procedure(proc)
   {
-    var smtEngine := RSolvers.CreateEngine(axiomMap, cli);
+    var smtEngine := RSolvers.CreateEngine(axiomMap, options);
     var preIncarnations, bodyIncarnations, postIncarnations := CreateProcIncarnations(proc.Parameters, declMap);
 
     {
@@ -420,6 +420,8 @@ module Verifier {
     case Proved =>
     case Unproved(reason) =>
       print "Error: Failed to prove ", errorText, " ", errorReportingInfo.ToString(), "\n";
-      print "Reason: ", reason, "\n";
+      if "rprint" in smtEngine.Options {
+        print "Proof-failure context: ", reason, "\n";
+      }
   }
 }

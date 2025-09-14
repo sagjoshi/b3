@@ -33,6 +33,7 @@ module B3 {
       case "print" => CLI.OptionInfo.ArgumentCount(0)
       case "rprint" => CLI.OptionInfo.ArgumentCount(0)
       case "solver-log" => CLI.OptionInfo.ArgumentCount(0)
+      case "solver-failure" => CLI.OptionInfo.ArgumentCount(0)
       case _ => CLI.OptionInfo.Unknown
     }
   }
@@ -82,7 +83,7 @@ module B3 {
       return;
     }
 
-    Verifier.Verify(b3, cli);
+    Verifier.Verify(b3, cli.options);
   }
 
   method ReadAndParseProgram(filename: string) returns (r: Result<RawAst.Program, string>) {
