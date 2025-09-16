@@ -1,0 +1,13 @@
+// RUN: %b3 verify "%s" --solver-log > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+type string
+
+procedure P() {
+  var a := |hello: string|
+  var b := |hej: string|
+  var c := |hello: string|
+  check a == c
+  check a != b // cannot prove this
+  check a == b // cannot prove this either
+}

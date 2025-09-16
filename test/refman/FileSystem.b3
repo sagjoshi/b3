@@ -29,15 +29,8 @@
 // of declaring a parameter to be "injective").
 
 procedure Good(out result: XResult) {
-  // string literals (here, treated as uninterpreted values)
-  val s_name: string
-  val s_BlockPublicAcls: string
-  val s_bucket: string
-  val s_is_blocked: string
-  val s_is_not_blocked: string
-
   var cresult: CResult
-  CreateClient(s_name, out cresult)
+  CreateClient(|myFileSystemName: string|, out cresult)
   if !CIsSuccess(cresult) {
     result := XFailure(CFailure..msg(cresult))
     return
@@ -75,12 +68,12 @@ procedure Good(out result: XResult) {
     }
     var bresponse := BSuccess..value(bresult)
  
-    var isBlocked := GetAttributeValue(BResponse..getConfig(bresponse), s_BlockPublicAcls)
+    var isBlocked := GetAttributeValue(BResponse..getConfig(bresponse), |BlockPublicAcls: string|)
 
     if isBlocked {
-      Print(s_bucket, bucketName, s_is_blocked)
+      Print(|bucket: string|, bucketName, |is-blocked: string|)
     } else {
-      Print(s_bucket, bucketName, s_is_not_blocked)
+      Print(|bucket: string|, bucketName, |is-not-blocked: string|)
     }
 
     i := i + 1

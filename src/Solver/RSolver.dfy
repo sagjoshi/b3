@@ -50,8 +50,8 @@ module RSolvers {
       match this
       case Boolean(b) => SExpr.Boolean(b)
       case Integer(x) => SExpr.Integer(x)
-      case CustomLiteral(s, _) =>
-        if s in literalMapper then literalMapper[s] else SExpr.S("|" + s + "|")
+      case CustomLiteral(s, typ) =>
+        if s in literalMapper then literalMapper[s] else SExpr.S(CustomLiteralToSExprName())
       case Id(v) => SExpr.Id(v)
       case FuncAppl(op, args) =>
         var sargs := RExprListToSExprs(args, this, literalMapper);
@@ -147,6 +147,12 @@ module RSolvers {
         BoundVarsToString(vv) +
         PatternsToString(patterns, this) +
         " " + body.ToString() + ")"
+    }
+
+    function CustomLiteralToSExprName(): string
+      requires CustomLiteral?
+    {
+      "|" + typ.ToString() + ":" + s + "|"
     }
 
     static function BoundVarsToString(vv: seq<SolverExpr.SConstant>): string {
@@ -328,7 +334,7 @@ module RSolvers {
     function LiteralMapper(): map<string, SExpr>
       reads state
     {
-      map["%tag" := SExpr.S(Int2String(|state.declarations|))]
+      map["%tag" := SExpr.S(Int2String(|state.declarations| + |state.additionalDeclaredNames|))]
     }
 
     method Prove(context: RContext, expr: RExpr) returns (result: Solvers.ProofResult)
@@ -408,13 +414,21 @@ module RSolvers {
     method DeclareNewSymbols(r: RExpr, exclude: set<SolverExpr.SConstant> := {})
       requires Valid()
       modifies Repr
-      ensures Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+      ensures Valid() && state.Evolves()
       decreases AxiomsNotYetDeclared(), r
     {
       match r
       case Boolean(_) =>
       case Integer(_) =>
-      case CustomLiteral(_, _) =>
+      case CustomLiteral(s, typ) =>
+        if s != "%tag" {
+          var name := r.CustomLiteralToSExprName();
+          if name !in state.additionalDeclaredNames {
+            DeclareNewTypes(typ);
+            var c := new SolverExpr.SConstant(name, typ);
+            state.DeclareAdditionalName(c, name);
+          }
+        }
       case Id(v) =>
         if v !in exclude && v !in state.declarations {
           DeclareNewTypes(v.typ);
@@ -427,7 +441,7 @@ module RSolvers {
             if func !in state.declarations {
               // declare the types in the function's signature
               for i := 0 to |decl.inputTypes|
-                invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+                invariant Valid() && state.Evolves()
               {
                 DeclareNewTypes(decl.inputTypes[i]);
               }
@@ -437,7 +451,7 @@ module RSolvers {
               // include all axioms that explain the function
               var explainedBy := func.ExplainedBy;
               for i := 0 to |explainedBy|
-                invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+                invariant Valid() && state.Evolves()
               {
                 var axiom := explainedBy[i];
                 expect axiom in axiomMap; // TODO
@@ -456,7 +470,7 @@ module RSolvers {
             }
         }
         for i := 0 to |args|
-          invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+          invariant Valid() && state.Evolves()
         {
           DeclareNewSymbols(args[i], exclude);
         }
@@ -472,18 +486,18 @@ module RSolvers {
       case QuantifierExpr(_, vv, patterns, body) =>
         var exclude' := exclude;
         for i := 0 to |vv|
-          invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+          invariant Valid() && state.Evolves()
         {
           var v := vv[i];
           DeclareNewTypes(v.typ);
           exclude' := exclude' + {v};
         }
         for i := 0 to |patterns|
-          invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+          invariant Valid() && state.Evolves()
         {
           var tr := patterns[i];
           for j := 0 to |tr.exprs|
-            invariant Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+            invariant Valid() && state.Evolves()
           {
             DeclareNewSymbols(tr.exprs[j], exclude');
           }
@@ -494,7 +508,7 @@ module RSolvers {
     method DeclareNewTypes(typ: SolverExpr.SType)
       requires Valid()
       modifies Repr
-      ensures Valid() && state.stack == old(state.stack) && old(state.declarations) <= state.declarations
+      ensures Valid() && state.Evolves()
     {
       match typ
       case SBool | SInt =>
