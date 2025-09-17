@@ -1,4 +1,4 @@
-module WellFormed { 
+/*module WellFormed { 
   import opened Defs
   export 
     provides Defs
@@ -127,4 +127,4 @@ module WellFormed {
     forall ss { EqLemma(ss); }
     SeqLemma'(ss, cont);
   }
-}
+}*/

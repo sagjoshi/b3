@@ -1,4 +1,4 @@
-module VCGenBigStep {
+/*module VCGenBigStep {
   import opened Defs
   import opened Context
   import BigStep
@@ -189,4 +189,4 @@ module VCGenBigStep {
         }
     }
   }
-}
+}*/

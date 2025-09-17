@@ -6,11 +6,14 @@ module Omni {
 
   least predicate Sem(s: Stmt, st: State, post: iset<State>) {
     match s
-    case Check(e)       => e.IsDefinedOn(st.Keys) && (st.Eval(e) &&  st in post)
-    case Assume(e)      => e.IsDefinedOn(st.Keys) && (st.Eval(e) ==> st in post)
+    case Check(e)       => e.IsDefinedOn(|st|) && (st.Eval(e) &&  st in post)
+    case Assume(e)      => e.IsDefinedOn(|st|) && (st.Eval(e) ==> st in post)
     case Seq(ss)        => SeqSem(ss, st, post)
-    case Assign(x, v)   => v.IsDefinedOn(st.Keys) && st.Update(x, st.Eval(v)) in post
-    case VarDecl(v, s)  => forall b: Value :: Sem(s, st.Update(v, b), UpdateSet(v, post))
+    case Assign(x, v)   => 
+      && v.IsDefinedOn(|st|) 
+      && x < |st|
+      && st[x := st.Eval(v)] in post
+    case VarDecl(v, s)  => forall b: Value :: Sem(s, st.Update(b), UpdateSet(post))
     case Choice(s0, s1) => Sem(s0, st, post) && Sem(s1, st, post)
   }
 
@@ -34,7 +37,7 @@ module Omni {
     ensures Sem(s, st, post')
   {
     match s
-    case VarDecl(v, s) => assert UpdateSet(v, post) <= UpdateSet(v, post');
+    case VarDecl(v, s) => assert UpdateSet(post) <= UpdateSet(post');
     case Seq(ss) => SeqSemCons(ss, st, post, post');
     case _ =>
   }
@@ -74,7 +77,7 @@ module Omni {
     SemNest(Seq(ss), cont, st, post);
   }
 
-  lemma FrameLemma(s: Stmt, v: Variable, st: State, post: iset<State>)
+  /*lemma FrameLemma(s: Stmt, v: Variable, st: State, post: iset<State>)
     requires Sem(s, st, post)
     requires v !in s.FVars()
     requires v !in s.BVars()
@@ -98,37 +101,33 @@ module Omni {
         }
       }
     case Choice(s0, s1) => FrameLemma(s0, v, st, post); FrameLemma(s1, v, st, post);
-  }
+  }*/
 
-  lemma SeqFrameLemma(ss: seq<Stmt>, v: Variable, st: State, post: iset<State>)
-    requires SeqSem(ss, st, post)
-    requires v !in SeqBVars(ss)
-    requires v !in SeqFVars(ss)
-    ensures SeqSem(ss, st - {v}, DeleteSet(v, post))
+  lemma SeqFrameLemma(ss: seq<Stmt>, st: State, post: iset<State>)
+    requires SeqSem(ss, SeqShiftFVars(ss, 0), post)
+    ensures SeqSem(ss, Tail(st), DeleteSet(post))
   {
-    if ss == [] {
-    } else {
-      assert ([ss[0]] + ss[1..])[0] == ss[0];
-      FrameLemma(ss[0], v, st, SeqWP(ss[1..], post));
-      SemNest(ss[0], ss[1..], st - {v}, DeleteSet(v, post)) by {
-        SemCons(ss[0], st - {v}, DeleteSet(v, SeqWP(ss[1..], post)), SeqWP(ss[1..], DeleteSet(v, post))) by {
-          forall st | st in DeleteSet(v, SeqWP(ss[1..], post)) 
-            ensures SeqSem(ss[1..], st, DeleteSet(v, post)) {
-            var st': State :| st == st' - {v} && SeqSem(ss[1..], st', post);
-            SeqFrameLemma(ss[1..], v, st', post);
-          }
-        }
-      }
-    }
+    // if ss == [] {
+    // } else {
+    //   assert ([ss[0]] + ss[1..])[0] == ss[0];
+    //   FrameLemma(ss[0], v, st, SeqWP(ss[1..], post));
+    //   SemNest(ss[0], ss[1..], st - {v}, DeleteSet(v, post)) by {
+    //     SemCons(ss[0], st - {v}, DeleteSet(v, SeqWP(ss[1..], post)), SeqWP(ss[1..], DeleteSet(v, post))) by {
+    //       forall st | st in DeleteSet(v, SeqWP(ss[1..], post)) 
+    //         ensures SeqSem(ss[1..], st, DeleteSet(v, post)) {
+    //         var st': State :| st == st' - {v} && SeqSem(ss[1..], st', post);
+    //         SeqFrameLemma(ss[1..], v, st', post);
+    //       }
+    //     }
+    //   }
+    // }
   }
 
   lemma SeqFrameLemmaAll(ss: seq<Stmt>, v: Variable, st: State)
-    requires SeqSem(ss, st, AllStates)
-    requires v !in SeqBVars(ss)
-    requires v !in SeqFVars(ss)
-    ensures SeqSem(ss, st - {v}, AllStates)
+    requires SeqSem(SeqShiftFVars(ss, 0), st, AllStates)
+    ensures SeqSem(ss, Tail(st), AllStates)
   {
-    SeqFrameLemma(ss, v, st, AllStates);
-    SeqSemCons(ss, st - {v}, DeleteSet(v, AllStates), AllStates);
+    SeqFrameLemma(ss, st, AllStates);
+    SeqSemCons(ss, Tail(st), DeleteSet(AllStates), AllStates);
   }
 }

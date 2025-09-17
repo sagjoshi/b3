@@ -1,13 +1,19 @@
-module VCGenOmni {
+/*module VCGenOmni {
   import opened Defs
   import opened Context
   import Omni
+  import WellFormed
 
   method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
-    requires s.IsDefinedOn(|context_in.incarnation|)
+    requires s.BVars() <= context_in.bVars
+    requires s.IsDefinedOn(context_in.incarnation.Keys)
+    requires context_in.Valid()
     requires s.Single()
+    requires s.IsDefinedOn(context_in.incarnation.Keys)
 
-    ensures |context_in.incarnation| <= |context.incarnation|
+    ensures context.Valid()
+    ensures context_in.bVars == context.bVars
+    ensures context_in.incarnation.Keys <= context.incarnation.Keys
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall st: State :: 
         context_in.IsSatisfiedOn(st) ==>
@@ -22,8 +28,8 @@ module VCGenOmni {
         forall st: State | context.IsSatisfiedOn(st) 
           ensures Omni.Sem(s, context_in.AdjustState(st), context.AdjustedModels) {
           assert context.AdjustState(st).Eval(e) by { 
-            EvalConjLemma(context.ctx, st);
             context.AdjustStateSubstituteLemma(st, e);
+            EvalConjLemma(context.ctx, st);
           }
         }
       }
@@ -33,8 +39,9 @@ module VCGenOmni {
       forall st: State | context_in.IsSatisfiedOn(st) 
         ensures Omni.Sem(s, context_in.AdjustState(st), context.AdjustedModels) {
         if context.AdjustState(st).Eval(e) {
-          context_in.SubstituteIsDefinedOnLemma(e, |st|);
+          context_in.SubstituteIsDefinedOnLemma(e);
           context_in.AdjustStateSubstituteLemma(st, e);
+          FVarsConjUnionLemma(context_in.ctx, [context_in.Substitute(e)]);
         }
       }
     case Assign(v, x) =>
@@ -43,26 +50,27 @@ module VCGenOmni {
       VCs := [];
       forall st: State | context_in.IsSatisfiedOn(st) 
         ensures Omni.Sem(s, context_in.AdjustState(st), context.AdjustedModels) {
-        context_in.SubstituteIsDefinedOnLemma(x, |st|);
+        context_in.SubstituteIsDefinedOnLemma(x);
         var v' := st.Eval(context_in.Substitute(x));
-        var st' := st + [v'];
-        var stTransformed := context_in.AdjustState(st)[v := context_in.AdjustState(st).Eval(x)];
+        var st' := st.Update(vNew, v');
+        var stTransformed := context_in.AdjustState(st).Update(v, context_in.AdjustState(st).Eval(x));
 
         assert stTransformed == context.AdjustState(st') by {
           context_in.AdjustStateSubstituteLemma(st, x);
         }
 
         assert context.IsSatisfiedOn(st') by {
-          context_in.SubstituteIsDefinedOnLemma(x, |st'|);
-          DepthEqLemma(BVar(vNew), context_in.Substitute(x)); 
-          
-          context_in.Substitute(x).EvalDepthLemma(st, st');
-          EvalEqLemma(BVar(vNew), context_in.Substitute(x), st');
-          assert forall e: Expr :: e.IsDefinedOn(|st|) ==> 
+          context_in.SubstituteIsDefinedOnLemma(x);
+          FVarsEqLemma(Var(vNew), context_in.Substitute(x));
+          FVarsConjUnionLemma(context_in.ctx, [Eq(Var(vNew), context_in.Substitute(x))]);
+
+          context_in.Substitute(x).EvalFVarsLemma(st, st');
+          EvalEqLemma(Var(vNew), context_in.Substitute(x), st');
+          assert forall e: Expr :: e.FVars() <= context_in.FVars() ==> 
             st.Eval(e) ==> st'.Eval(e) by 
           {
-            forall e: Expr | e.IsDefinedOn(|st|) && st.Eval(e) { 
-              e.EvalDepthLemma(st, st');
+            forall e: Expr | e.FVars() <= context_in.FVars() && st.Eval(e) { 
+              e.EvalFVarsLemma(st, st');
             }
           }
         }
@@ -70,8 +78,11 @@ module VCGenOmni {
   }
 
 method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>) 
-  requires SeqIsDefinedOn(s, |context.incarnation|)
+  requires SeqWellFormed(s)
+  requires SeqBVars(s) <= context.bVars
+  requires SeqIsDefinedOn(s, context.incarnation.Keys)
 
+  requires context.Valid()
   decreases SeqSize(s)
   ensures
     (forall e <- VCs :: e.Holds()) ==> 
@@ -94,6 +105,7 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
       match stmt 
       case Seq(ss) =>
         SeqFunConcatLemmas(ss, cont);
+        WellFormed.SeqLemma(ss, cont);
         VCs := SeqVCGen(ss + cont, context);
         if (forall e <- VCs :: e.Holds()) {
           forall st: State | context.IsSatisfiedOn(st) {
@@ -105,35 +117,30 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
         var VCs1 := SeqVCGen([ss1] + cont, context);
         VCs := VCs0 + VCs1;
       case VarDecl(v, s) =>
-        var vNew, context' := context.AddVar();
-        VCs := SeqVCGen([s] + SeqShiftFVars(cont, 0), context') by {
-          SeqShiftFVarsSizeLemma(cont, 0);
-          assert SeqDepth(SeqShiftFVars(cont, 0)) == SeqDepth(cont) + 1 by {
-            assume {:axiom} false;
-
-            // lambda (lambda.1) ---> x y => x
-          }
-        }
+        ghost var vNew;
+        var context';
+        vNew, context' := context.AddVar(v);
+        VCs := SeqVCGen([s] + cont, context');
         if (forall e <- VCs :: e.Holds()) {
           forall st: State | context.IsSatisfiedOn(st)
             ensures Omni.SeqSem([VarDecl(v, s)] + cont, context.AdjustState(st), AllStates) {
             Omni.SemNest(VarDecl(v, s), cont, context.AdjustState(st), AllStates) by {
-              forall b: Value ensures Omni.Sem(s, context.AdjustState(st).Update(b), 
-                UpdateSet(Omni.SeqWP(cont, AllStates)))
-              { 
-                assert context.AdjustState(st).Update(b) == context'.AdjustState(st + [b]);
-                assert context'.IsSatisfiedOn(st + [b]) by {
+              forall b: Value ensures Omni.Sem(s, context.AdjustState(st).Update(v, b), 
+                UpdateSet(v, Omni.SeqWP(cont, AllStates)))
+              {
+                assert context.AdjustState(st).Update(v,b) == context'.AdjustState(st.Update(vNew, b));
+                assert context'.IsSatisfiedOn(st.Update(vNew, b)) by {
                   forall e <- context'.ctx 
-                    ensures (st + [b]).Eval(e) {
-                      e.EvalDepthLemma(st, st + [b]);
+                    ensures st.Update(vNew, b).Eval(e) {
+                    e.EvalFVarsLemma(st, st.Update(vNew, b));
                   }
                 }
-                Omni.SemCons(s, context.AdjustState(st).Update(b), 
-                  Omni.SeqWP(SeqShiftFVars(cont, 0), AllStates), 
-                  UpdateSet(Omni.SeqWP(cont, AllStates))) by 
+                Omni.SemCons(s, context.AdjustState(st).Update(v, b), 
+                  Omni.SeqWP(cont, AllStates), 
+                  UpdateSet(v, Omni.SeqWP(cont, AllStates))) by 
                 {
-                  forall st | Omni.SeqSem(SeqShiftFVars(cont, 0), st, AllStates) 
-                    ensures Omni.SeqSem(cont, Tail(st), AllStates) {
+                  forall st | Omni.SeqSem(cont, st, AllStates) 
+                    ensures Omni.SeqSem(cont, st - {v}, AllStates) {
                     Omni.SeqFrameLemmaAll(cont, v, st);
                   }
                 }
@@ -143,4 +150,4 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
         }
     }
   }
-}
+}*/
