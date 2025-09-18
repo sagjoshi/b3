@@ -120,8 +120,8 @@ module RSolvers {
       case Plus => "+"
       case Minus => "-"
       case Times => "*"
-      case Div => "/"
-      case Mod => "%"
+      case Div => "div"
+      case Mod => "mod"
       case LogicalNot => "not"
       case UnaryMinus => "-"
     }
