@@ -1,89 +1,151 @@
 module Omni {
   import opened Defs
   export
-    provides Defs, SeqLemma, SemNest, WP, SemCons, SeqFrameLemmaAll
-    reveals Sem, SeqSem, SeqWP
+    provides Defs, SeqLemma, SemNest, WP, SemCons//, SeqFrameLemmaAll
+    reveals 
+      Sem, SeqSem, SeqWP,
+      Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq
+  
+  // datatype Point = Point(post: iset<State>, variablesInScope: nat)
+  newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
 
-  least predicate Sem(s: Stmt, st: State, post: iset<State>) {
-    match s
-    case Check(e)       => e.IsDefinedOn(|st|) && (st.Eval(e) &&  st in post)
-    case Assume(e)      => e.IsDefinedOn(|st|) && (st.Eval(e) ==> st in post)
-    case Seq(ss)        => SeqSem(ss, st, post)
-    case Assign(x, v)   => 
-      && v.IsDefinedOn(|st|) 
-      && x < |st|
-      && st[x := st.Eval(v)] in post
-    case VarDecl(v, s)  => forall b: Value :: Sem(s, st.Update(b), UpdateSet(post))
-    case Choice(s0, s1) => Sem(s0, st, post) && Sem(s1, st, post)
-    case WithPop(ss) => SeqSem(ss, Tail(st), post)
-  }
+      ghost const head : iset<State> := this[0]
 
-  ghost function WP(s: Stmt, post: iset<State>) : iset<State> {
-    iset st: State | Sem(s, st, post)
-  }
+    ghost function Update(variablesInScope: nat): Continuation {
+      var head' := UpdateSet(variablesInScope, head);
+      if |this| == 1 then [head'] else [head'] + this[1..].Update(variablesInScope)
+    }
 
-  least predicate SeqSem(ss: seq<Stmt>, st: State, post: iset<State>) {
-    if ss == [] then st in post else
-    forall post': iset<State> :: 
-      (forall st: State :: SeqSem(ss[1..], st, post) ==> st in post') ==> Sem(ss[0], st, post')
-  }
+    ghost function UpdateAndAdd(variablesInScope: nat): Continuation {
+      ([head] + this).Update(variablesInScope)
+    }
 
-  ghost function SeqWP(ss: seq<Stmt>, post: iset<State>): iset<State> {
-    iset st: State | SeqSem(ss, st, post)
-  }
+    predicate Leq(cont2: Continuation) {
+      && |this| == |cont2|
+      && forall i: nat :: i < |this| ==> this[i] <= cont2[i]
+    }
 
-  least lemma SemCons(s: Stmt, st: State, post: iset<State>, post': iset<State>)
-    requires Sem(s, st, post)
-    requires post <= post'
-    ensures Sem(s, st, post')
-  {
-    match s
-    case VarDecl(v, s) => assert UpdateSet(post) <= UpdateSet(post');
-    case Seq(ss) => SeqSemCons(ss, st, post, post');
-    case _ =>
-  }
+    lemma LeqUpdate(variablesInScope: nat, cont: Continuation) 
+      requires Leq(cont) 
+      ensures Update(variablesInScope).Leq(cont.Update(variablesInScope))
+    {
 
-  lemma SeqSemCons(ss: seq<Stmt>, st: State, post: iset<State>, post': iset<State>)
-    requires SeqSem(ss, st, post)
-    requires post <= post'
-    ensures SeqSem(ss, st, post')
-  {  }
+    }
 
-  least lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, post: iset<State>) 
-    requires Sem(s, st, SeqWP(ss, post))
-    ensures SeqSem([s] + ss, st, post)
-  {
-    forall post': iset<State> | SeqWP(ss, post) <= post' {
-      SemCons(s, st, SeqWP(ss, post), post');
+    lemma LeqUpdateAndAdd(variablesInScope: nat, cont: Continuation) 
+      requires Leq(cont) 
+      ensures UpdateAndAdd(variablesInScope).Leq(cont.UpdateAndAdd(variablesInScope))
+    {
+      ([head] + this).LeqUpdate(variablesInScope, [cont.head] + cont);
     }
   }
 
-  lemma SemSingle(s: Stmt, st: State, post: iset<State>)
-    requires SeqSem([s], st, post)
-    ensures Sem(s, st, post)
+  /**
+    wp ( (1 :: (1 :: 2 := A; exit(1)); 1 := B);) [post] st == 
+    wp ((1 :: 2 := A; exit(1)); 1 := B) [Upd(post), Upd(post)] st ==
+    wp (1 :: 2 := A; exit(1)) [Upd(post)[1/B], Upd(post)] st == 
+    wp (2 := A; exit(1)) [Upd(Upd(post)[1/B]), Upd(Upd(post)[1/B]), Upd2(post)] st ==
+    wp (exit(1)) [[Upd(Upd(post)[1/B])[2/A]], Upd(Upd(post)[1/B]), Upd2(post)] st ==
+    st in Upd(Upd(post)[1/B])
+
+   */
+
+  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
+    match s
+    case Check(e)       => 
+      && e.IsDefinedOn(|st|) 
+      && (st.Eval(e) &&  st in posts.head)
+    case Assume(e)      => 
+      && e.IsDefinedOn(|st|) 
+      && (st.Eval(e) ==> st in posts.head)
+    case Seq(ss)        => SeqSem(ss, st, posts)
+    case Assign(x, v)   => 
+      && x < |st|
+      && v.IsDefinedOn(|st|) 
+      && st[x := st.Eval(v)] in posts.head
+    case Choice(s0, s1) => Sem(s0, st, posts) && Sem(s1, st, posts)
+    case NewScope(n, s) => 
+      forall vs: State :: |vs| == n ==> Sem(s, st.Update(vs), posts.UpdateAndAdd(n))
+    case Escape(l)      => |posts| > l && st in posts[l]
+  }
+
+  ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
+    iset st: State | Sem(s, st, posts)
+  }
+
+  ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) {
+    if ss == [] then st in posts.head else
+    // Q: how to make trigger
+    forall post': iset<State> :: 
+      ((forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts[0 := post']))
+  }
+
+  ghost function SeqWP(ss: seq<Stmt>, cont: Continuation): iset<State> {
+    iset st: State | SeqSem(ss, st, cont)
+  }
+
+  lemma SemCons(s: Stmt, st: State, posts: Continuation, posts': Continuation)
+    requires Sem(s, st, posts)
+    requires posts.Leq(posts')
+    ensures Sem(s, st, posts')
+  {
+    match s
+    // case VarDecl(v, s) => assert UpdateSet(post) <= UpdateSet(post');
+    case Seq(ss) => SeqSemCons(ss, st, posts, posts');
+    case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
+    case _ =>
+  }
+
+  lemma SeqSemCons(ss: seq<Stmt>, st: State, posts: Continuation, posts': Continuation)
+    requires SeqSem(ss, st, posts)
+    requires posts.Leq(posts')
+    ensures SeqSem(ss, st, posts')
+  {
+    if ss != [] {
+      assert ss == [ss[0]] + ss[1..];
+      forall post': iset<State> {:trigger} | (forall st: State :: SeqSem(ss[1..], st, posts') ==> st in post') {
+        SemCons(ss[0], st, posts[0 := post'], posts'[0 := post']);
+      }
+    }
+  }
+
+  lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
+    requires Sem(s, st, posts[0 := SeqWP(ss, posts)])
+    ensures SeqSem([s] + ss, st, posts)
+  {
+    forall post': iset<State> {:trigger} | (forall st: State :: SeqSem(ss, st, posts) ==> st in post') {
+      SemCons(s, st, posts[0 := SeqWP(ss, posts)], posts[0 := post']);
+    }
+  }
+
+  lemma SemSingle(s: Stmt, st: State, posts: Continuation)
+    requires SeqSem([s], st, posts)
+    ensures Sem(s, st, posts)
   {
     assert [s][0] == s;
     assert [s][1..] == [];
+    assert posts == posts[0 := posts.head];
   }
 
-  lemma SeqSemNest(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, post: iset<State>) 
-    requires SeqSem(ss1 + ss2, st, post)
-    ensures SeqSem(ss1, st, SeqWP(ss2, post))
+  lemma SeqSemNest(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, posts: Continuation) 
+    requires SeqSem(ss1 + ss2, st, posts)
+    ensures SeqSem(ss1, st, posts[0 := SeqWP(ss2, posts)])
   {
     if ss1 == [] {
       assert [] + ss2 == ss2;
     } else {
       assert ([ss1[0]] + (ss1[1..] + ss2))[0] == ss1[0];
       assert ss1 + ss2 == [ss1[0]] + (ss1[1..] + ss2); 
+      assert forall post': iset<State> {:trigger} :: posts[0 := SeqWP(ss2, posts)][0 := post'] == posts[0 := post'];
     }
   }
 
-  lemma SeqLemma(ss: seq<Stmt>, cont: seq<Stmt>, st: State, post: iset<State>)
-    requires Sem(Seq(ss + cont), st, post)
-    ensures SeqSem([Seq(ss)] + cont, st, post)
+  lemma SeqLemma(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, posts: Continuation)
+    requires Sem(Seq(ss1 + ss2), st, posts)
+    ensures SeqSem([Seq(ss1)] + ss2, st, posts)
   {
-    SeqSemNest(ss, cont, st, post);
-    SemNest(Seq(ss), cont, st, post);
+    SeqSemNest(ss1, ss2, st, posts);
+    SemNest(Seq(ss1), ss2, st, posts);
   }
 
   // lemma FrameLemma(s: Stmt, st: State, post: iset<State>)
@@ -133,11 +195,11 @@ module Omni {
   //   }
   // }
 
-  lemma SeqFrameLemmaAll(ss: seq<Stmt>, v: Variable, st: State)
-    requires SeqSem([WithPop(ss)], st, AllStates)
-    ensures SeqSem(ss, Tail(st), AllStates)
-  {
-    // SeqSemNest([Pop], ss, st, AllStates);
-    // SemSingle(Pop, st, SeqWP(ss, AllStates));
-  }
+  // lemma SeqFrameLemmaAll(ss: seq<Stmt>, v: Variable, st: State)
+  //   requires SeqSem([WithPop(ss)], st, AllStates)
+  //   ensures SeqSem(ss, Tail(st), AllStates)
+  // {
+  //   // SeqSemNest([Pop], ss, st, AllStates);
+  //   // SemSingle(Pop, st, SeqWP(ss, AllStates));
+  // }
 }

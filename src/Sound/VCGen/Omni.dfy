@@ -3,7 +3,7 @@ module VCGenOmni {
   import opened Context
   import Omni
 
-  method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
+  /*method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
     requires s.IsDefinedOn(|context_in.incarnation|)
     requires s.Single()
 
@@ -70,9 +70,9 @@ module VCGenOmni {
     // case Pop => 
     //   context := context_in.(incarnation := SeqTail(context_in.incarnation));
     //   VCs := [];
-  }
+  }*/
 
-method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>) 
+/*method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>) 
   requires SeqIsDefinedOn(s, |context.incarnation|)
 
   decreases SeqSize(s)
@@ -141,5 +141,5 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
         }
       case WithPop(ss) => assume {:axiom} false;
     }
-  }
+  }*/
 }

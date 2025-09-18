@@ -1,20 +1,20 @@
 module Defs { 
 
-  function Tail(ss: State): State {
-    if ss == [] then [] else ss[1..]
+  function Tail(n: nat, ss: State): State {
+    if |ss| >= n then [] else ss[n..]
   }
 
-  function SeqTail<T>(ss: seq<T>): seq<T> {
-    if ss == [] then [] else ss[1..]
+  function SeqTail<T>(n: nat, ss: seq<T>): seq<T> {
+    if |ss| >= n then [] else ss[n..]
   }
 
-  ghost function UpdateSet(post: iset<State>): iset<State> 
+  ghost function UpdateSet(n: nat, post: iset<State>): iset<State> 
   {
-    iset st: State | Tail(st) in post 
+    iset st: State | Tail(n, st) in post 
   }
 
-  ghost function DeleteSet(post: iset<State>): iset<State> {
-    iset st: State | exists st' <- post :: st == Tail(st')
+  ghost function DeleteSet(n: nat, post: iset<State>): iset<State> {
+    iset st: State | exists st' <- post :: st == Tail(n, st')
   }
 
   function max(x: nat, y: nat): nat {
@@ -93,20 +93,9 @@ module Defs {
       match this
       case Forall(v, body) => 
         forall x: bool { 
-          body.EvalDepthLemma(s1.Update(x), s2.Update(x)); 
+          body.EvalDepthLemma(s1.Update([x]), s2.Update([x])); 
         }
       case _ =>
-    }
-
-    function ShiftFVars(i: Idx): Expr {
-      match this
-      case Forall(v, body) => Forall(v, body.ShiftFVars(i + 1))
-      case BVar(v) => if v >= i then BVar(v + 1) else BVar(v)
-      case And(e0, e1) => And(e0.ShiftFVars(i), e1.ShiftFVars(i))
-      case Or(e0, e1) => Or(e0.ShiftFVars(i), e1.ShiftFVars(i))
-      case Not(e) => Not(e.ShiftFVars(i))
-      case Implies(e0, e1) => Implies(e0.ShiftFVars(i), e1.ShiftFVars(i))
-      case _ => this
     }
 
     // lemma ShiftFVarsDepthLemma(i: Idx)
@@ -144,10 +133,8 @@ module Defs {
     | Assume(e: Expr)
     | Seq(ss: seq<Stmt>)
     | Assign(lhs: Idx, rhs: Expr)
-    | VarDecl(v: Variable, s: Stmt)
-    | WithPop(ss: seq<Stmt>)
-    // | Loop(inv: Expr, body: Stmt)
-    // | While(guard: Expr, inv: Expr, body: Stmt)
+    | NewScope(n: nat, s: Stmt)
+    | Escape(l: nat)
     | Choice(0: Stmt, 1: Stmt)
   {
     function Size(): nat {
@@ -157,8 +144,8 @@ module Defs {
       case Seq(ss) => 1 + SeqSize(ss)
       case Assign(_, _) => 1
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
-      case VarDecl(_, s) => 2 + s.Size()
-      case WithPop(ss) => 1 + SeqSize(ss)
+      case NewScope(n, s) => 1 + s.Size()
+      case Escape(l) => 1
     }
 
     function Depth(): Idx {
@@ -167,9 +154,9 @@ module Defs {
       case Assume(e) => e.Depth()
       case Seq(ss) => SeqDepth(ss)
       case Assign(id, rhs) => max(id + 1, rhs.Depth())
-      case VarDecl(_, s) => if s.Depth() == 0 then 0 else s.Depth() - 1
       case Choice(s0, s1) => max(s0.Depth(), s1.Depth())
-      case WithPop(ss) => SeqDepth(ss) + 1
+      case NewScope(n, s) => if s.Depth() <= n then 0 else s.Depth() - n
+      case Escape(l) => 0
     }
 
     // lemma ShiftFVarsDepthLemma(i: Idx)
@@ -365,11 +352,11 @@ module Defs {
       case Or(e0, e1)      => Eval(e0) || Eval(e1)
       case Not(e)          => !Eval(e)
       case Implies(e0, e1) => Eval(e0) ==> Eval(e1)
-      case Forall(v, body) => forall x: bool :: Update(x).Eval(body)
+      case Forall(v, body) => forall x: bool :: Update([x]).Eval(body)
       case BVar(v)         => this[v]
     }
-    function Update(val: Value): State {
-      [val] + this
+    function Update(vals: State): State {
+      vals + this
     }
   }
 }
