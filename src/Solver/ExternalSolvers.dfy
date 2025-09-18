@@ -16,7 +16,7 @@ module ExternalSolvers {
     var process;
     match which {
       case Z3 =>
-        process :- OSProcess.Create("z3", "-in -smt2");
+        process :- OSProcess.Create("z3", "-in");
       case CVC5 =>
         process :- OSProcess.Create("cvc5", "--incremental");
     }

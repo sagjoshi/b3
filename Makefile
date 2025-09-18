@@ -46,6 +46,9 @@ build-cs:
 build-java:
 	(cd target/java; dafny build --target=java $(PROJECT_FILE) --output $(TARGET))
 
+quick-java:
+	(cd target/java; dafny build --no-verify --target=java $(PROJECT_FILE) --output $(TARGET))
+
 run-java:
 	(cd target/java; dafny run --target=java $(PROJECT_FILE) --no-verify --build $(TARGET) -- verify ../../$(INPUT))
 

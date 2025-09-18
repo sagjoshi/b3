@@ -15,34 +15,34 @@ namespace OSProcesses {
       var execName = executable.ToVerbatimString(false);
       var args = arguments.ToVerbatimString(false);
 
-      var p = new OSProcess(execName, args);
-
-      var r = Std.Wrappers.Result<OSProcess, Dafny.ISequence<Dafny.Rune>>.create_Success(p);
-      return r;
-    }
-
-    public OSProcess(string cmd, string arguments) {
-      try
-      {
-        // Start process
-        var startInfo = new ProcessStartInfo(cmd, arguments);
+      var p = new OSProcess(executable);
+      try {
+        var startInfo = new ProcessStartInfo(execName, args);
         startInfo.RedirectStandardInput = true;
         startInfo.RedirectStandardOutput = true;
         startInfo.RedirectStandardError = true;
         startInfo.UseShellExecute = false;
         startInfo.CreateNoWindow = true;
 
-        process = Process.Start(startInfo);
-        if (process != null) {
-          input = process.StandardInput;
-          output = process.StandardOutput;
-        } else {
-          Console.WriteLine($"Failed to start '{cmd}' process");
+        p.process = Process.Start(startInfo);
+        if (p.process == null) {
+          var errorMessage = Dafny.Sequence<Dafny.Rune>.UnicodeFromString($"Failed to start '{executable}' process");
+          return Std.Wrappers.Result<OSProcess, Dafny.ISequence<Dafny.Rune>>.create_Failure(errorMessage);
         }
 
+        p.input = p.process.StandardInput;
+        p.output = p.process.StandardOutput;
+
       } catch (Exception ex) {
-        Console.WriteLine($"Error initializing '{cmd}': {ex.Message}");
+        var errorMessage = Dafny.Sequence<Dafny.Rune>.UnicodeFromString($"Error initializing '{executable}': {ex.Message}");
+        return Std.Wrappers.Result<OSProcess, Dafny.ISequence<Dafny.Rune>>.create_Failure(errorMessage);
       }
+
+      return Std.Wrappers.Result<OSProcess, Dafny.ISequence<Dafny.Rune>>.create_Success(p);
+    }
+
+    public OSProcess(Dafny.ISequence<Dafny.Rune> executable) {
+      executableName = executable;
     }
 
     public Dafny.ISequence<Dafny.Rune> ExecutableName() {
