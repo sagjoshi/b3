@@ -66,8 +66,8 @@ Procedure ::=
     Spec*
   [ BlockStmt ]
 
-FParameter ::=
-  [ "inout" | "out" ] Identifier ":" Type
+PParameter ::=
+  [ "inout" | "out" ] Identifier ":" Type [ "autoinv" Expression ]
 
 Spec ::=
   | requires AExpression

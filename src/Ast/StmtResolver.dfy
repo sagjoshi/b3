@@ -101,6 +101,8 @@ module StmtResolver {
         var v := new LocalVariable(variable.name, variable.isMutable, typ);
         var ls' := ls.AddVariable(variable.name, v);
         assert ls'.varMap.Keys == ls.varMap.Keys + {v.name};
+        var maybeAutoInv :- ResolveMaybeExpr(variable.optionalAutoInv, prs.ers, ls'.varMap);
+        v.maybeAutoInv := maybeAutoInv;
         var b :- ResolveStmt(body, prs, ls');
         r := VarDecl(v, i, b);
 

@@ -87,6 +87,7 @@ module ResolvedPrinter {
     for i := 0 to |params| {
       var param := params[i];
       print sep, ParameterMode(param.mode), param.name, ": ", param.typ.ToString();
+      OptionalAutoInvariant(param.maybeAutoInv);
       sep := ", ";
     }
     print ")\n";
@@ -97,6 +98,14 @@ module ResolvedPrinter {
     match proc.Body
     case None =>
     case Some(body) => StmtAsBlock(body, 0);
+  }
+
+  method OptionalAutoInvariant(maybeAutoInv: Option<Expr>) {
+    match maybeAutoInv
+    case None =>
+    case Some(autoInv) =>
+      print " autoinv ";
+      Expression(autoInv);
   }
 
   method Statement(stmt: Stmt, indent: nat, followedByEndCurly: bool := false, omitInitialIndent: bool := false)
@@ -196,6 +205,9 @@ module ResolvedPrinter {
     decreases body, 3
   {
     IdTypeDecl(if v.IsMutable() then "var " else "val ", v.name, v.typ);
+    if v is AutoInvVariable {
+      OptionalAutoInvariant((v as AutoInvVariable).maybeAutoInv);
+    }
     match init {
       case None =>
       case Some(e) =>

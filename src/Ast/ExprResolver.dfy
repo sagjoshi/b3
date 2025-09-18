@@ -8,7 +8,7 @@ module ExprResolver {
 
   export
     reveals ExprResolverState, ExprResolverState.Valid
-    provides ResolveExpr, ResolveExprList
+    provides ResolveExpr, ResolveExprList, ResolveMaybeExpr
     provides Wrappers, Raw, Ast, Types
 
   datatype ExprResolverState = ExprResolverState(b3: Raw.Program, typeMap: map<string, TypeDecl>, functionMap: map<string, Function>)
@@ -16,6 +16,19 @@ module ExprResolver {
     ghost predicate Valid() {
       forall typename :: b3.IsType(typename) <==> typename in BuiltInTypes || typename in typeMap
     }
+  }
+
+  method ResolveMaybeExpr(maybeExpr: Option<Raw.Expr>, ers: ExprResolverState, varMap: map<string, Variable>) returns (r: Result<Option<Expr>, string>)
+    ensures r.Success? && maybeExpr.None? ==> r.value == None
+    ensures r.Success? && maybeExpr.Some? ==> maybeExpr.value.WellFormed(ers.b3, varMap.Keys)
+    ensures r.Success? && maybeExpr.Some? ==> r.value.Some? && r.value.value.WellFormed()
+  {
+    match maybeExpr
+    case None =>
+      return Success(None);
+    case Some(expr) =>
+      var e :- ResolveExpr(expr, ers, varMap);
+      return Success(Some(e));
   }
 
   method ResolveExpr(expr: Raw.Expr, ers: ExprResolverState, varMap: map<string, Variable>) returns (result: Result<Expr, string>)

@@ -489,7 +489,7 @@ module Resolver {
       invariant paramMap.Keys ==
         (set p <- proc.parameters[..n] :: p.name) +
         (set p <- proc.parameters[..n] | p.mode == Raw.InOut :: Raw.OldName(p.name))
-      invariant |formals| == n
+      invariant |formals| == n && fresh(formals)
       invariant forall i :: 0 <= i < n ==> formals[i] == paramMap[proc.parameters[i].name]
       invariant forall i :: 0 <= i < n ==> formals[i].name == proc.parameters[i].name
       invariant forall i :: 0 <= i < n ==> formals[i].mode == proc.parameters[i].mode
@@ -523,12 +523,21 @@ module Resolver {
 
     var preVariables := MapProject(paramMap, preScope);
     assert preVariables.Keys == preScope;
-    var pre :- ResolveAExprs(proc.pre, ers, LocalResolverState(preVariables, map[], None, None));
+    var preLs := LocalResolverState(preVariables, map[], None, None);
+    var pre :- ResolveAExprs(proc.pre, ers, preLs);
 
     var postVariables := MapProject(paramMap, postScope);
     assert postVariables.Keys == postScope;
-    var ls := LocalResolverState(postVariables, map[], None, None);
-    var post :- ResolveAExprs(proc.post, ers, ls);
+    var postLs := LocalResolverState(postVariables, map[], None, None);
+    var post :- ResolveAExprs(proc.post, ers, postLs);
+
+    for n := 0 to |proc.parameters|
+      modifies formals
+    {
+      var p := proc.parameters[n];
+      var maybeAutoInv :- ResolveMaybeExpr(p.optionalAutoInv, ers, (if p.mode == Raw.In then preLs else postLs).varMap);
+      formals[n].maybeAutoInv := maybeAutoInv;
+    }
 
     var rproc := new Procedure(proc.name, formals, pre, post);
     return Success(rproc);

@@ -40,6 +40,7 @@ b3_modifier = (
     'inout', 'out', 'requires', 'ensures',
     'invariant',
     'pattern',
+    'autoinv',
 )
 
 class CustomLexer(RegexLexer):

@@ -29,7 +29,7 @@ Stmt ::=
 
 ```
 VarDecl ::=
-  ( var | val ) Identifier [ ":" Type ] [ ":=" Expression ]
+  ( var | val ) Identifier [ ":" Type ] [ "autoinv" Expression ] [ ":=" Expression ]
 ```
 
 A declaration using `var` introduces a mutable local variable, whereas `val`

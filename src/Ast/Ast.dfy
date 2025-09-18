@@ -11,6 +11,7 @@ module Ast {
     provides NamedDecl.Name, Type.ToString
     reveals Program, Type, Variable, Procedure, Label, Parameter, LocalVariable
     reveals Expr, Operator, ParameterMode, AExpr, Stmt, CallArgument
+    reveals AutoInvVariable
     reveals Program.WellFormed, Procedure.WellFormed, Parameter.WellFormed, AExpr.WellFormed, Stmt.WellFormed, Expr.WellFormed, CallArgument.WellFormed
     reveals CallArgument.CorrespondingMode
     provides Procedure.Parameters, Procedure.Pre, Procedure.Post, Procedure.Body
@@ -22,6 +23,7 @@ module Ast {
     provides Axiom.Explains, Axiom.Expr
     provides Variable.name, Variable.typ
     provides Variable.IsMutable, LocalVariable.IsMutable, Parameter.IsMutable, FParameter.IsMutable
+    provides AutoInvVariable.maybeAutoInv
     provides Parameter.mode, Parameter.oldInOut
     provides Label.Name
     reveals Stmt.IsPredicateStmt
@@ -96,6 +98,10 @@ module Ast {
     function DeclToString(): string
   }
 
+  trait AutoInvVariable extends Variable {
+    var maybeAutoInv: Option<Expr>
+  }
+
   class Procedure extends NamedDecl {
     const Parameters: seq<Parameter>
     const Pre: seq<AExpr>
@@ -137,14 +143,14 @@ module Ast {
     }
   }
 
-  class Parameter extends Variable {
+  class Parameter extends AutoInvVariable {
     const mode: ParameterMode
     const oldInOut: Option<Variable>
 
     constructor (name: string, mode: ParameterMode, typ: Type, oldInOut: Option<Variable>)
-      ensures this.name == name && this.mode == mode && this.typ == typ && this.oldInOut == oldInOut
+      ensures this.name == name && this.mode == mode && this.typ == typ && this.oldInOut == oldInOut && this.maybeAutoInv == None
     {
-      this.name, this.mode, this.typ := name, mode, typ;
+      this.name, this.mode, this.typ, this.maybeAutoInv := name, mode, typ, None;
       this.oldInOut := oldInOut;
     }
 
@@ -261,12 +267,12 @@ module Ast {
     }
   }
 
-  class LocalVariable extends Variable {
+  class LocalVariable extends AutoInvVariable {
     const isMutable: bool
     constructor (name: string, isMutable: bool, typ: Type)
-      ensures this.name == name
+      ensures this.name == name && this.maybeAutoInv == None
     {
-      this.name, this.isMutable, this.typ := name, isMutable, typ;
+      this.name, this.isMutable, this.typ, this.maybeAutoInv := name, isMutable, typ, None;
     }
 
     predicate IsMutable() {
@@ -289,7 +295,7 @@ module Ast {
   }
 
   datatype Stmt =
-    | VarDecl(v: Variable, initial: Option<Expr>, body: Stmt)
+    | VarDecl(v: AutoInvVariable, initial: Option<Expr>, body: Stmt)
     | Assign(lhs: Variable, rhs: Expr)
     | Block(stmts: seq<Stmt>)
     | Call(proc: Procedure, args: seq<CallArgument>)
@@ -297,7 +303,7 @@ module Ast {
     | Check(cond: Expr)
     | Assume(cond: Expr)
     | Assert(cond: Expr)
-    | AForall(v: Variable, body: Stmt)
+    | AForall(bv: Variable, body: Stmt)
     // Control flow
     | Choose(branches: seq<Stmt>)
     | Loop(invariants: seq<AExpr>, body: Stmt)

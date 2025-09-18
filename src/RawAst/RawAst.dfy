@@ -132,7 +132,7 @@ module RawAst {
 
   type Scope = set<string>
 
-  datatype Variable = Variable(name: string, isMutable: bool, optionalType: Option<TypeName>) // TODO: add auto-invariant
+  datatype Variable = Variable(name: string, isMutable: bool, optionalType: Option<TypeName>, optionalAutoInv: Option<Expr>)
   {
     static predicate UniqueNames(variables: seq<Variable>) {
       forall i, j :: 0 <= i < j < |variables| ==> variables[i].name != variables[j].name
@@ -143,7 +143,7 @@ module RawAst {
     }
   }
 
-  datatype Parameter = Parameter(name: string, mode: ParameterMode, typ: TypeName)
+  datatype Parameter = Parameter(name: string, mode: ParameterMode, typ: TypeName, optionalAutoInv: Option<Expr>)
   {
     static predicate UniqueNames(parameters: seq<Parameter>) {
       && (forall i, j :: 0 <= i < j < |parameters| ==> parameters[i].name != parameters[j].name)

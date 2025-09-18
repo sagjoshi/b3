@@ -219,15 +219,16 @@ module Parser {
        ])
 
   const parseProcFormal: B<Parameter> :=
-    parseParameterMode.Then(
-      (mode: ParameterMode) =>
-        parseIdType.M2(MId, (name, typ) => Parameter(name, mode, typ))
-    )
+    parseParameterMode.Then((mode: ParameterMode) =>
+      parseIdType.Then((idType: (string, Types.TypeName)) =>
+        var (name, typ) := idType;
+          parseOptionalAutoInvariant.M(optionalAutoInv =>
+            Parameter(name, mode, typ, optionalAutoInv))))
 
-  const parseIdType: B<(string, string)> :=
+  const parseIdType: B<(string, Types.TypeName)> :=
     parseId.I_I(Sym(":").e_I(parseType))
 
-  const parseIdOptionalType: B<(string, Option<string>)> :=
+  const parseIdOptionalType: B<(string, Option<Types.TypeName>)> :=
     parseId.I_I(SymNotPrefix(":", [":="]).e_I(parseType).Option())
 
   const parseType: B<Types.TypeName> :=
@@ -286,11 +287,16 @@ module Parser {
   }
 
   function parseVariableDeclaration(isMutable: bool, c: StmtRecSel): B<Stmt> {
-    parseIdOptionalType.M2(MId, (name: string, optionalType: Option<string>) => Variable(name, isMutable, optionalType)).
+    parseIdOptionalType.M2(MId, (name: string, optionalType: Option<string>) => (name, optionalType)).
+    I_I(parseOptionalAutoInvariant).M2(MId, (nameType: (string, Option<string>), autoInv: Option<Expr>) =>
+      Variable(nameType.0, isMutable, nameType.1, autoInv)).
     I_I(Sym(":=").e_I(parseExpr).Option()).
     I_I(c("stmt").Rep()).M3(Unfold3l, (v, init, stmts) =>
                               VarDecl(v, init, Block(stmts)))
   }
+
+  const parseOptionalAutoInvariant: B<Option<Expr>> :=
+    T("autoinv").e_I(parseExpr).Option()
 
   function parseOptionalExitArgument(): B<Option<string>> {
     Lookahead(parseId.I_e(Or([Sym(":="), Sym(":"), Sym("(")]))).Then((maybe: Option<string>) =>

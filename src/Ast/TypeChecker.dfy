@@ -69,6 +69,8 @@ module TypeChecker {
     requires proc.WellFormed()
     reads proc
   {
+    // TODO: to include the following line, the parameters need to be added to the "reads" clause
+    // && (forall p <- proc.Parameters :: p.maybeAutoInv.Some? ==> TypeCorrectExpr(p.maybeAutoInv.value) && p.maybeAutoInv.value.HasType(BoolType))
     && (forall ae <- proc.Pre :: TypeCorrectAExpr(ae))
     && (forall ae <- proc.Post :: TypeCorrectAExpr(ae))
     && (proc.Body.Some? ==> TypeCorrectStmt(proc.Body.value))
@@ -90,6 +92,8 @@ module TypeChecker {
     match stmt
     case VarDecl(variable, init, body) =>
       && (init.Some? ==> TypeCorrectExpr(init.value))
+      // TODO: to include the following line, all local variables need to be added to the "reads" clause
+      // && (variable.maybeAutoInv.Some? ==> TypeCorrectExpr(variable.maybeAutoInv.value) && variable.maybeAutoInv.value.HasType(BoolType))
       && TypeCorrectStmt(body)
     case Assign(lhs, rhs) =>
       TypeCorrectExpr(rhs) && rhs.HasType(lhs.typ)
@@ -182,6 +186,13 @@ module TypeChecker {
     requires proc.WellFormed()
     ensures outcome.Pass? ==> TypeCorrectProc(proc)
   {
+    for n := 0 to |proc.Parameters| {
+      var p := proc.Parameters[n];
+      if p.maybeAutoInv.Some? {
+        assume {:axiom} p.maybeAutoInv.value.WellFormed(); // TODO: to add this condition to WellFormed, all AutoInvVariable's need to be added to the "reads" clause
+        :- TypeCheckAs(p.maybeAutoInv.value, BoolType);
+      }
+    }
     :- CheckAExprs(proc.Pre);
     :- CheckAExprs(proc.Post);
     if proc.Body.Some? {
@@ -241,6 +252,10 @@ module TypeChecker {
   {
     match stmt {
       case VarDecl(variable, init, body) =>
+        if variable.maybeAutoInv.Some? {
+          assume {:axiom} variable.maybeAutoInv.value.WellFormed(); // TODO: to add this condition to WellFormed, all AutoInvVariable's need to be added to the "reads" clause
+          :- TypeCheckAs(variable.maybeAutoInv.value, BoolType);
+        }
         if init.Some? {
           :- TypeCheckAs(init.value, variable.typ);
         }

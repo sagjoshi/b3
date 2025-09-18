@@ -88,6 +88,7 @@ module Printer {
     for i := 0 to |params| {
       var param := params[i];
       print sep, ParameterMode(param.mode), param.name, ": ", param.typ;
+      OptionalAutoInvariant(param.optionalAutoInv);
       sep := ", ";
     }
     print ")\n";
@@ -98,6 +99,14 @@ module Printer {
     match proc.body
     case None =>
     case Some(stmt) => StmtAsBlock(stmt, 0);
+  }
+
+  method OptionalAutoInvariant(optionalAutoInv: Option<Expr>) {
+    match optionalAutoInv
+    case None =>
+    case Some(autoInv) =>
+      print " autoinv ";
+      Expression(autoInv);
   }
 
   method Statement(stmt: Stmt, indent: nat, followedByEndCurly: bool := false, omitInitialIndent: bool := false)
@@ -232,6 +241,7 @@ module Printer {
     decreases body, 3
   {
     IdTypeDecl(if v.isMutable then "var " else "val ", v.name, v.optionalType);
+    OptionalAutoInvariant(v.optionalAutoInv);
     match init {
       case None =>
       case Some(e) =>
