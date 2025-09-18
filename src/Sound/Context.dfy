@@ -52,11 +52,9 @@ module Context {
       requires forall i <- incarnation :: i < |s|
     { 
       // Q: how to get rid of `if`?
-      seq(|incarnation|, i => 
-        if 0 <= i < |incarnation| then
-          assert incarnation[i] in incarnation;
-          s[incarnation[i]]
-        else true)
+      seq(|incarnation|, (i: nat) requires i < |incarnation| => 
+        assert incarnation[i] in incarnation;
+        s[incarnation[i]])
     }
 
     function SubstituteIdx(e: Expr, i: Idx): Expr
@@ -178,7 +176,7 @@ module Context {
       requires e2.IsDefinedOn(|s2| + 1)
       requires forall b: bool :: s1.Update(b).Eval(e1) == s2.Update(b).Eval(e2)
       ensures (forall b: bool :: s1.Update(b).Eval(e1)) == (forall b: bool :: s2.Update(b).Eval(e2))
-    { }
+    {  }
 
     lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx)
       requires e.IsDefinedOn(|incarnation| + i)
@@ -191,8 +189,11 @@ module Context {
       match e 
       case Forall(v, body) =>
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
-        assert forall b: bool :: ((s[..i] + AdjustState(s[i..])).Update(b)).Eval(body) == (s.Update(b)).Eval(SubstituteIdx(body, i + 1)) by {
-          forall b: bool ensures ((s[..i] + AdjustState(s[i..])).Update(b)).Eval(body) == (s.Update(b)).Eval(SubstituteIdx(body, i + 1)) {
+        assert forall b: bool :: 
+          ((s[..i] + AdjustState(s[i..])).Update(b)).Eval(body) == 
+          (s.Update(b)).Eval(SubstituteIdx(body, i + 1)) by {
+          forall b: bool 
+            ensures ((s[..i] + AdjustState(s[i..])).Update(b)).Eval(body) == (s.Update(b)).Eval(SubstituteIdx(body, i + 1)) {
             assert ([b] + s)[..i+1] == [b] + s[..i];
             assert ([b] + s)[i+1..] == s[i..];
             assert ((s[..i] + AdjustState(s[i..])).Update(b)) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));

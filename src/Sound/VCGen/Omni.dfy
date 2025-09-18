@@ -67,6 +67,9 @@ module VCGenOmni {
           }
         }
       }
+    // case Pop => 
+    //   context := context_in.(incarnation := SeqTail(context_in.incarnation));
+    //   VCs := [];
   }
 
 method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>) 
@@ -106,13 +109,8 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
         VCs := VCs0 + VCs1;
       case VarDecl(v, s) =>
         var vNew, context' := context.AddVar();
-        VCs := SeqVCGen([s] + SeqShiftFVars(cont, 0), context') by {
-          SeqShiftFVarsSizeLemma(cont, 0);
-          assert SeqDepth(SeqShiftFVars(cont, 0)) == SeqDepth(cont) + 1 by {
-            assume {:axiom} false;
-
-            // lambda (lambda.1) ---> x y => x
-          }
+        VCs := SeqVCGen([s] + WithPop(cont), context') by {
+          SeqFunConcatLemmas([Pop], cont);
         }
         if (forall e <- VCs :: e.Holds()) {
           forall st: State | context.IsSatisfiedOn(st)
@@ -129,10 +127,10 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
                   }
                 }
                 Omni.SemCons(s, context.AdjustState(st).Update(b), 
-                  Omni.SeqWP(SeqShiftFVars(cont, 0), AllStates), 
+                  Omni.SeqWP(WithPop(cont), AllStates), 
                   UpdateSet(Omni.SeqWP(cont, AllStates))) by 
                 {
-                  forall st | Omni.SeqSem(SeqShiftFVars(cont, 0), st, AllStates) 
+                  forall st | Omni.SeqSem(WithPop(cont), st, AllStates) 
                     ensures Omni.SeqSem(cont, Tail(st), AllStates) {
                     Omni.SeqFrameLemmaAll(cont, v, st);
                   }
@@ -141,6 +139,7 @@ method SeqVCGen(s: seq<Stmt>, context: Context) returns (VCs: seq<Expr>)
             }
           }
         }
+      case WithPop(ss) => assume {:axiom} false;
     }
   }
 }

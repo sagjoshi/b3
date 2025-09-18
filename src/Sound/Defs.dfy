@@ -4,6 +4,10 @@ module Defs {
     if ss == [] then [] else ss[1..]
   }
 
+  function SeqTail<T>(ss: seq<T>): seq<T> {
+    if ss == [] then [] else ss[1..]
+  }
+
   ghost function UpdateSet(post: iset<State>): iset<State> 
   {
     iset st: State | Tail(st) in post 
@@ -141,6 +145,7 @@ module Defs {
     | Seq(ss: seq<Stmt>)
     | Assign(lhs: Idx, rhs: Expr)
     | VarDecl(v: Variable, s: Stmt)
+    | WithPop(ss: seq<Stmt>)
     // | Loop(inv: Expr, body: Stmt)
     // | While(guard: Expr, inv: Expr, body: Stmt)
     | Choice(0: Stmt, 1: Stmt)
@@ -152,7 +157,8 @@ module Defs {
       case Seq(ss) => 1 + SeqSize(ss)
       case Assign(_, _) => 1
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
-      case VarDecl(_, s) => 1 + s.Size()
+      case VarDecl(_, s) => 2 + s.Size()
+      case WithPop(ss) => 1 + SeqSize(ss)
     }
 
     function Depth(): Idx {
@@ -163,27 +169,7 @@ module Defs {
       case Assign(id, rhs) => max(id + 1, rhs.Depth())
       case VarDecl(_, s) => if s.Depth() == 0 then 0 else s.Depth() - 1
       case Choice(s0, s1) => max(s0.Depth(), s1.Depth())
-    }
-
-    function ShiftFVars(i: Idx): Stmt {
-      match this
-      case Check(e) => Check(e.ShiftFVars(i))
-      case Assume(e) => Assume(e.ShiftFVars(i))
-      case Seq(ss) => Seq(SeqShiftFVars(ss, i))
-      case Assign(id, rhs) =>
-        if id >= i then 
-          Assign(id + 1, rhs.ShiftFVars(i)) 
-        else Assign(id, rhs.ShiftFVars(i))
-      case VarDecl(v, s) => VarDecl(v, s.ShiftFVars(i + 1))
-      case Choice(s0, s1) => Choice(s0.ShiftFVars(i), s1.ShiftFVars(i))
-    }
-
-    lemma ShiftFVarsSizeLemma(i: Idx)
-      ensures ShiftFVars(i).Size() == Size()
-    {
-      match this 
-      case Seq(ss) => SeqShiftFVarsSizeLemma(ss, i);
-      case _ =>
+      case WithPop(ss) => SeqDepth(ss) + 1
     }
 
     // lemma ShiftFVarsDepthLemma(i: Idx)
@@ -247,6 +233,7 @@ module Defs {
     }
   }
 
+
   function SeqSize(ss: seq<Stmt>): nat {
     if ss == [] then 0 else ss[0].Size() + SeqSize(ss[1..])
   }
@@ -258,19 +245,6 @@ module Defs {
 
   function SeqDepth(ss: seq<Stmt>): nat {
     if ss == [] then 0 else max(ss[0].Depth(), SeqDepth(ss[1..]))
-  }
-
-  function SeqShiftFVars(ss: seq<Stmt>, i: Idx): seq<Stmt> {
-    if ss == [] then [] else [ss[0].ShiftFVars(i)] + SeqShiftFVars(ss[1..], i)
-  }
-
-  lemma SeqShiftFVarsSizeLemma(ss: seq<Stmt>, i: Idx)
-    ensures SeqSize(SeqShiftFVars(ss, i)) == SeqSize(ss)
-  {
-    if ss != [] {
-      assert ss == [ss[0]] + (ss[1..]);
-      ss[0].ShiftFVarsSizeLemma(i);
-    }
   }
 
   // lemma SeqShiftFVarsDepthLemma(ss: seq<Stmt>, i: Idx)
