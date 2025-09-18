@@ -37,7 +37,7 @@ module SpecConversions {
     if spec == [] then
       []
     else
-      var ae, rest := spec[0], ToCheck(spec[1..]);
+      var ae, rest := spec[0], ToLearn(spec[1..]);
       assert AstValid.AExpr(ae);
       match ae
       case AExpr(cond) =>

@@ -1,9 +1,7 @@
 // RUN: %b3 resolve --rprint "%s" > "%t"
 // RUN: %diff "%s.expect" "%t"
 
-// here is a comment
-
-procedure Test(x:int)   procedure // another comment alright
+procedure Test(x:int)   procedure
 Mote() {var x: string
 val y: int := 200
 

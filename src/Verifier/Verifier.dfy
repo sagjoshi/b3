@@ -85,7 +85,7 @@ module Verifier {
       var context := context_in;
 
       var preLearning := SpecConversions.ToLearn(proc.Pre);
-      context := ProcessPredicateStmts(preLearning, postIncarnations, context, smtEngine);
+      context := ProcessPredicateStmts(preLearning, bodyIncarnations, context, smtEngine);
 
       var postCheck := SpecConversions.ToCheck(proc.Post);
       Process([body] + postCheck, bodyIncarnations, context, BC.Empty(), smtEngine);
@@ -398,25 +398,25 @@ module Verifier {
     var _ := VetSpecification(invariants, incarnations, context, smtEngine, stmt);
 
     var assumeInvariants := SpecConversions.ToLearn(invariants);
-    var maintainanceChecks := SpecConversions.ToCheck(invariants);
+    var maintenanceChecks := SpecConversions.ToCheck(invariants);
     // Process body
-    assert BC.StmtMeasure(stmt) > BC.StmtSeqMeasure(assumeInvariants + [body] + maintainanceChecks) by {
+    assert BC.StmtMeasure(stmt) > BC.StmtSeqMeasure(assumeInvariants + [body] + maintenanceChecks) by {
       calc {
         BC.StmtMeasure(stmt);
         1 + BC.AExprsMeasure(invariants, stmt) + 4 * |invariants| + BC.StmtMeasure(body);
       >=
         1 + 4 * |invariants| + BC.StmtMeasure(body);
-      >  { BC.JustPredicateStmtsMeasure(assumeInvariants); BC.JustPredicateStmtsMeasure(maintainanceChecks); }
-        BC.StmtSeqMeasure(assumeInvariants) + BC.StmtMeasure(body) + BC.StmtSeqMeasure(maintainanceChecks);
+      >  { BC.JustPredicateStmtsMeasure(assumeInvariants); BC.JustPredicateStmtsMeasure(maintenanceChecks); }
+        BC.StmtSeqMeasure(assumeInvariants) + BC.StmtMeasure(body) + BC.StmtSeqMeasure(maintenanceChecks);
         { BC.AboutStmtSeqMeasureSingleton(body); }
-        BC.StmtSeqMeasure(assumeInvariants) + BC.StmtSeqMeasure([body]) + BC.StmtSeqMeasure(maintainanceChecks);
+        BC.StmtSeqMeasure(assumeInvariants) + BC.StmtSeqMeasure([body]) + BC.StmtSeqMeasure(maintenanceChecks);
         { BC.AboutStmtSeqMeasureConcat(assumeInvariants, [body]); }
-        BC.StmtSeqMeasure(assumeInvariants + [body]) + BC.StmtSeqMeasure(maintainanceChecks);
-        { BC.AboutStmtSeqMeasureConcat(assumeInvariants + [body], maintainanceChecks); }
-        BC.StmtSeqMeasure(assumeInvariants + [body] + maintainanceChecks);
+        BC.StmtSeqMeasure(assumeInvariants + [body]) + BC.StmtSeqMeasure(maintenanceChecks);
+        { BC.AboutStmtSeqMeasureConcat(assumeInvariants + [body], maintenanceChecks); }
+        BC.StmtSeqMeasure(assumeInvariants + [body] + maintenanceChecks);
       }
     }
-    Process(assumeInvariants + [body] + maintainanceChecks, incarnations, context, B, smtEngine);
+    Process(assumeInvariants + [body] + maintenanceChecks, incarnations, context, B, smtEngine);
   }
 
   // `errorReportingInfo` is currently an expression that, together with `errorText`, gets printed
