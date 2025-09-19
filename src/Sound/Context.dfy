@@ -130,18 +130,20 @@ module Context {
       vNew := v';
     }
 
-    method AddVar() returns (ghost vNew: Idx, context: Context)
-      ensures context.incarnation == [vNew] + incarnation
-      ensures context.ctx         == ctx
-
-      ensures forall i <- incarnation :: i < vNew 
-      ensures vNew == SeqMax(incarnation) + 1
-      ensures SeqMax(incarnation) + 1 == SeqMax(context.incarnation)
+    function Delete(n: nat): Context
+      requires n <= |incarnation|
     {
-      var v' := FreshIdx();
-      var incarnation' :=  [v'] + incarnation;
-      context := Context(ctx, incarnation');
-      vNew := v';
+      Context(ctx, incarnation[n..])
+    }
+      
+
+    function AddVars(n: nat): Context
+      ensures incarnation <= AddVars(n).incarnation 
+      ensures AddVars(n).ctx         == ctx
+      ensures |AddVars(n).incarnation| == |incarnation| + n
+    {
+      var add_on := seq(n, (i: nat) => SeqMax(incarnation) + 1 + i);
+      Context(ctx, incarnation + add_on)
     }
 
     ghost predicate IsDefinedOn(d: Idx)

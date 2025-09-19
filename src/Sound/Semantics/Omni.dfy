@@ -3,13 +3,18 @@ module Omni {
   export
     provides Defs, SeqLemma, SemNest, WP, SemCons//, SeqFrameLemmaAll
     reveals 
-      Sem, SeqSem, SeqWP,
-      Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq
+      Sem, SeqSem, SeqWP, SemSingle,
+      Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
+      Continuation.UpdateHead
   
   // datatype Point = Point(post: iset<State>, variablesInScope: nat)
   newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
 
-      ghost const head : iset<State> := this[0]
+    ghost const head : iset<State> := this[0]
+
+    ghost function UpdateHead(post: iset<State>): Continuation {
+      this[0 := post]
+    }
 
     ghost function Update(variablesInScope: nat): Continuation {
       var head' := UpdateSet(variablesInScope, head);
@@ -50,19 +55,26 @@ module Omni {
 
    */
 
-  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
+  ghost predicate SemSingle(s: Stmt, st: State, post: iset<State>) 
+    requires s.Single()
+  {
     match s
     case Check(e)       => 
       && e.IsDefinedOn(|st|) 
-      && (st.Eval(e) &&  st in posts.head)
+      && (st.Eval(e) &&  st in post)
     case Assume(e)      => 
       && e.IsDefinedOn(|st|) 
-      && (st.Eval(e) ==> st in posts.head)
-    case Seq(ss)        => SeqSem(ss, st, posts)
+      && (st.Eval(e) ==> st in post)
     case Assign(x, v)   => 
       && x < |st|
       && v.IsDefinedOn(|st|) 
-      && st[x := st.Eval(v)] in posts.head
+      && st[x := st.Eval(v)] in post
+  }
+
+  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
+    if s.Single() then SemSingle(s, st, posts.head) else
+    match s
+    case Seq(ss)        => SeqSem(ss, st, posts)
     case Choice(s0, s1) => Sem(s0, st, posts) && Sem(s1, st, posts)
     case NewScope(n, s) => 
       forall vs: State :: |vs| == n ==> Sem(s, st.Update(vs), posts.UpdateAndAdd(n))
@@ -77,7 +89,7 @@ module Omni {
     if ss == [] then st in posts.head else
     // Q: how to make trigger
     forall post': iset<State> :: 
-      ((forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts[0 := post']))
+      (forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts.UpdateHead(post'))
   }
 
   ghost function SeqWP(ss: seq<Stmt>, cont: Continuation): iset<State> {
@@ -103,28 +115,28 @@ module Omni {
   {
     if ss != [] {
       assert ss == [ss[0]] + ss[1..];
-      forall post': iset<State> {:trigger} | (forall st: State :: SeqSem(ss[1..], st, posts') ==> st in post') {
-        SemCons(ss[0], st, posts[0 := post'], posts'[0 := post']);
+      forall post': iset<State> | (forall st: State :: SeqSem(ss[1..], st, posts') ==> st in post') {
+        SemCons(ss[0], st, posts.UpdateHead(post'), posts'.UpdateHead(post'));
       }
     }
   }
-
+  // SeqSem([s] + ss, st, post + posts) == Sem(s, st, [SeqWP(ss, posts)] + posts)
   lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
     requires Sem(s, st, posts[0 := SeqWP(ss, posts)])
     ensures SeqSem([s] + ss, st, posts)
   {
-    forall post': iset<State> {:trigger} | (forall st: State :: SeqSem(ss, st, posts) ==> st in post') {
-      SemCons(s, st, posts[0 := SeqWP(ss, posts)], posts[0 := post']);
+    forall post': iset<State> | (forall st: State :: SeqSem(ss, st, posts) ==> st in post') {
+      SemCons(s, st, posts.UpdateHead(SeqWP(ss, posts)), posts.UpdateHead(post'));
     }
   }
 
-  lemma SemSingle(s: Stmt, st: State, posts: Continuation)
+  lemma SeqSemSingle(s: Stmt, st: State, posts: Continuation)
     requires SeqSem([s], st, posts)
     ensures Sem(s, st, posts)
   {
     assert [s][0] == s;
     assert [s][1..] == [];
-    assert posts == posts[0 := posts.head];
+    assert posts == posts.UpdateHead(posts.head);
   }
 
   lemma SeqSemNest(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, posts: Continuation) 
@@ -136,7 +148,7 @@ module Omni {
     } else {
       assert ([ss1[0]] + (ss1[1..] + ss2))[0] == ss1[0];
       assert ss1 + ss2 == [ss1[0]] + (ss1[1..] + ss2); 
-      assert forall post': iset<State> {:trigger} :: posts[0 := SeqWP(ss2, posts)][0 := post'] == posts[0 := post'];
+      assert forall post': iset<State> :: posts.UpdateHead(SeqWP(ss2, posts)).UpdateHead(post') == posts.UpdateHead(post');
     }
   }
 

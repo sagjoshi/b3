@@ -1,11 +1,11 @@
 module Defs { 
 
   function Tail(n: nat, ss: State): State {
-    if |ss| >= n then [] else ss[n..]
+    if |ss| <= n then [] else ss[n..]
   }
 
   function SeqTail<T>(n: nat, ss: seq<T>): seq<T> {
-    if |ss| >= n then [] else ss[n..]
+    if |ss| <= n then [] else ss[n..]
   }
 
   ghost function UpdateSet(n: nat, post: iset<State>): iset<State> 
@@ -144,7 +144,7 @@ module Defs {
       case Seq(ss) => 1 + SeqSize(ss)
       case Assign(_, _) => 1
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
-      case NewScope(n, s) => 1 + s.Size()
+      case NewScope(n, s) => 2 + s.Size()
       case Escape(l) => 1
     }
 
@@ -159,53 +159,25 @@ module Defs {
       case Escape(l) => 0
     }
 
-    // lemma ShiftFVarsDepthLemma(i: Idx)
-    //   ensures ShiftFVars(i).Depth() == Depth() + i
-    // {
-    //   match this 
-    //   case Seq(ss) => SeqShiftFVarsDepthLemma(ss, i);
-    //   case _ =>
-    // }
-
-    // function FVars(): set<Variable> {
-    //   match this
-    //   case Check(e) => e.FVars()
-    //   case Assume(e) => e.FVars()
-    //   case Seq(ss) => SeqFVars(ss)
-    //   case Assign(lhs, rhs) => {lhs} + rhs.FVars()
-    //   case VarDecl(v, s) => s.FVars() - {v}
-    //   case Choice(s0, s1) => s0.FVars() + s1.FVars()
-    // }
-
-    // function BVars(): set<Variable> {
-    //   match this
-    //   case Check(e) => e.BVars()
-    //   case Assume(e) => e.BVars()
-    //   case Seq(ss) => SeqBVars(ss)
-    //   case Assign(lhs, rhs) => rhs.BVars()
-    //   case VarDecl(v, s) => s.BVars() + {v}
-    //   case Choice(s0, s1) => s0.BVars() + s1.BVars()
-    // }
-
-    // predicate NoShadowing() {
-    //   match this
-    //   case Check(e) => e.NoShadowing()
-    //   case Assume(e) => e.NoShadowing()
-    //   case Seq(ss) => SeqNoShadowing(ss, this)
-    //     // && SeqNoShadowingNested(ss)
-    //     // && (forall i, j :: 0 <= i < j < |ss| ==> ss[i].BVars() !* ss[j].BVars())
-    //   case Assign(lhs, rhs) => rhs.NoShadowing()
-    //   case VarDecl(v, s) => v !in s.BVars() && s.NoShadowing()
-    //   case Choice(s0, s1) => s0.NoShadowing() && s1.NoShadowing()
-    // }
-
-    // predicate WellFormed() {
-    //   NoShadowing() && FVars() !! BVars()
-    // }
+    function JumpDepth() : Idx {
+      match this
+      case Check(e) => 0
+      case Assume(e) => 0
+      case Assign(id, rhs) => 0
+      case Seq(ss) => SeqJumpDepth(ss)
+      case Choice(s0, s1) => max(s0.JumpDepth(), s1.JumpDepth())
+      case NewScope(n, s) => if s.JumpDepth() == 0 then 0 else s.JumpDepth() - 1
+      case Escape(l) => l
+    }
 
     predicate IsDefinedOn(d: Idx) {
       Depth() <= d
     }
+
+    predicate JumpsDefinedOn(d: Idx) {
+      JumpDepth() <= d
+    }
+
     lemma IsDefinedOnTransitivity(d1: Idx, d2: Idx)
       requires d1 <= d2
       ensures IsDefinedOn(d1) ==> IsDefinedOn(d2)
@@ -232,6 +204,10 @@ module Defs {
 
   function SeqDepth(ss: seq<Stmt>): nat {
     if ss == [] then 0 else max(ss[0].Depth(), SeqDepth(ss[1..]))
+  }
+
+  function SeqJumpDepth(ss: seq<Stmt>): nat {
+    if ss == [] then 0 else max(ss[0].JumpDepth(), SeqJumpDepth(ss[1..]))
   }
 
   // lemma SeqShiftFVarsDepthLemma(ss: seq<Stmt>, i: Idx)
@@ -277,6 +253,12 @@ module Defs {
     ensures SeqIsDefinedOn(ss, d) <==> SeqDepth(ss) <= d
   {
     if ss == [] then true else ss[0].IsDefinedOn(d) && SeqIsDefinedOn(ss[1..], d)
+  }
+
+  predicate SeqJumpsDefinedOn(ss: seq<Stmt>, d: nat) 
+    ensures SeqJumpsDefinedOn(ss, d) <==> SeqJumpDepth(ss) <= d
+  {
+    if ss == [] then true else ss[0].JumpsDefinedOn(d) && SeqJumpsDefinedOn(ss[1..], d)
   }
 
   lemma IsDefinedOnAndLemma(e0: Expr, e1: Expr, s: State)
@@ -329,6 +311,7 @@ module Defs {
   lemma SeqFunConcatLemmas(ss1: seq<Stmt>, ss2: seq<Stmt>)
     ensures SeqSize(ss1 + ss2) == SeqSize(ss1) + SeqSize(ss2)
     ensures SeqDepth(ss1 + ss2) == max(SeqDepth(ss1), SeqDepth(ss2))
+    ensures SeqJumpDepth(ss1 + ss2) == max(SeqJumpDepth(ss1), SeqJumpDepth(ss2))
   {
     if ss1 == [] {
       assert ss1 + ss2 == ss2;
