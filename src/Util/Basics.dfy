@@ -100,6 +100,15 @@ module Basics {
       FoldRight(s[..last], f, f(s[last], z))
   }
 
+  function Prune<X>(s: seq<X>, keepers: set<X>): seq<X> {
+    if s == [] then
+      s
+    else if s[0] in keepers then
+      [s[0]] + Prune(s[1..], keepers)
+    else
+      Prune(s[1..], keepers)
+  }
+
   function ListFlatten<X>(l: List<List<X>>): List<X> {
     if l.Nil? then Nil else l.head.Append(ListFlatten(l.tail))
   }

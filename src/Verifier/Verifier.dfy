@@ -411,26 +411,19 @@ module Verifier {
     var _ := ProcessPredicateStmts(initChecks, incarnations, context, smtEngine);
 
     // Havoc the assignment targets of the loop body
-    // TODO: don't do AssignmentTargets.Compute as a set, do a sequence so that auto-invariants come out in a fixed order
     var assignmentTargets := AssignmentTargets.Compute(body);
-    var targets: seq<Variable> := [];
-    while assignmentTargets != {} {
-      var v :| v in assignmentTargets;
-      assignmentTargets := assignmentTargets - {v};
-      targets := targets + [v];
-    }
-    for n := 0 to |targets|
+    for n := 0 to |assignmentTargets|
       invariant smtEngine.Valid()
     {
-      var v := targets[n];
+      var v := assignmentTargets[n];
       var sv;
       incarnations, sv := incarnations.Update(v);
     }
-    for n := 0 to |targets|
+    for n := 0 to |assignmentTargets|
       invariant smtEngine.Valid()
     {
-      var v := targets[n];
-      if v is AutoInvVariable { // TODO: are assignment targets always AutoInvVariable's? If so, change AssignmentTargets.Compute above
+      var v := assignmentTargets[n];
+      if v is AutoInvVariable {
         var av := v as AutoInvVariable;
         if av.maybeAutoInv.Some? {
           var autoInv := av.maybeAutoInv.value;

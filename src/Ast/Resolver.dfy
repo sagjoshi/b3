@@ -439,7 +439,7 @@ module Resolver {
       invariant LinearForm(procMap, procedures)
       // properties of procedures
       invariant NamedDecl.Distinct(procedures)
-      invariant fresh(procedures)
+      invariant |procedures| == n && fresh(procedures)
       invariant forall proc <- procedures :: proc.WellFormed()
 /*
       invariant forall proc <- b3.procedures[..n] ::
