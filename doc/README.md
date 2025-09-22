@@ -2,7 +2,7 @@
 
 ### Reference manual
 
-The B3 reference manual, _This is B3_, is available here at [b3-lang.org](https://b3-lang.org).
+The B3 reference manual, _This is B3_, is available at [b3-lang.org](https://b3-lang.org).
 
 It is written in MyST Markdown within Sphinx.
 
@@ -24,10 +24,7 @@ To read what you built:
 
 ### Other documents
 
-* The original [B3 concept document](https://b3-lang.org/krml304.html).
+* The original [B3 concept document](https://b3-lang.org/krml301.html).
+* About the implementation: [B3 syntax, raw AST, and printing](https://b3-lang.org/krml304.html).
 
-About the implementation:
-
-* [B3 syntax, raw AST, and printing](https://b3-lang.org/krml304.html).
-
-To edit this document, use the [Madoko source](krml304.mdk).
+To edit thes documents, use the the Madoko tool (see the doc [Makefile](blob/main/doc/Makefile)).

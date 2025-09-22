@@ -4,11 +4,11 @@ B3 is an _intermediate verification language_ (IVL). Like other IVLs (for exampl
 
 B3 improves on Boogie 2 in two major ways:
 
-* The B3 language is streamlined for the kinds of encoding tasks that the Dafny-to-Boogie translation have developed over a period of 15+ years. For example, B3 has `check` statements ("check and forget"), `injective` modifiers for function parameters, and various "bread crumbs" that can be used to report detailed error messags.
+* The B3 language is streamlined for the kinds of encoding tasks that the Dafny-to-Boogie translation developed over the course of 15+ years. For example, B3 has `check` statements ("check and forget"), `injective` modifiers for function parameters, and various "breadcrumbs" that can be used to report detailed error messags.
 
-* The B3 verifier is designed, from the ground up, with proof stability in mind. For example, the verifier uses symbolic execution without joins, so the "then" and "else" branches of a condition are never considered together. Any temporary names introduced in that process are generated independently for the two branches. Also, the verifier introduces types, functions, and axioms into the verification context lazily. This reduces the size of the proof context, which experience shows has a positive effect on proof stability.
+* The B3 verifier is designed, from the ground up, with proof stability in mind. For example, the verifier uses symbolic execution without joins, so the "then" and "else" branches of a conditional statement are never considered together. Any temporary names introduced in that process are generated independently for the two branches. Also, the verifier introduces types, functions, and axioms into the verification context lazily. This reduces the size of the proof context, which experience shows has a positive effect on proof stability.
 
-B3 is implemented in Dafny, so the implementation is scrutinized by the Dafny verifier.
+B3 is implemented in Dafny, so its code is verified (up to the given specifications). The build scripts compile the B3 tool to both .NET and Java. Internally, B3 makes calls to an SMT solver; currently, Z3 and CVC5 are supported.
 
 ## View and build
 
@@ -22,15 +22,20 @@ make verify
 
 You'll need Dafny version 4.11.
 
-## Test
+## Run
 
-B3 test depends on [LLVM lit](https://llvm.org/docs/CommandGuide/lit.html) and [OutputCheck](https://pypi.org/project/OutputCheck/). Install them by using the following command and run test suites by `make lit`.
+After successfully running `make build` (which calls `dafny build src/dfyconfig.toml --output bin/b3`), you can run B3 like
 
-```script
-brew install pipx
-pipx install lit==18.1.8
-pipx install OutputCheck
-```
+    >  bin/b3 verify MyProgram.b3
+
+(for example, try `test/verifier/basics.b3` as the `MyProgram.b3`).
+
+If you want to link to B3 from your own program verifier, you may prefer to create a B3 AST directly, rather than calling B3 as a separate process.
+The `Makefile` has targets for building B3 for both .NET (the default) and Java. (Dafny has compilers to also target languages, too. To use any of them, you need to implement class [`OSProcess`](blob/main/target/cs/src/OSProcess.cs) for that language.) To run B3 under the JVM, build it with `make build-java` and then do
+
+    >  CLASSPATH=target/java/bin/b3.jar java b3 verify MyProgram.b3
+
+B3 supports Z3 and CVC5 as its underlying SMT engine. Select between the two with `--z3` (default) or `--cvc5`.
 
 ## B3 documentation
 
@@ -39,6 +44,16 @@ The main documentation for B3 is its language reference language, [This is B3](h
 The original [B3 concept document](https://b3-lang.org/krml301.html) gives some thinking and motivation. Note, however, that the language has evolved, so the concept document does not always describe what is implemented.
 
 Other documents for B3 contributors are available in the [`doc` folder](doc).
+
+## Tests
+
+The B3 test suite depends on [LLVM lit](https://llvm.org/docs/CommandGuide/lit.html) and [OutputCheck](https://pypi.org/project/OutputCheck/). Install them by using the following command and run the test suite by `make lit`.
+
+```script
+brew install pipx
+pipx install lit==18.1.8
+pipx install OutputCheck
+```
 
 ## Tool stages
 
