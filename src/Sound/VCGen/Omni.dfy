@@ -70,74 +70,6 @@ module VCGenOmni {
       }
   }
 
-  /**
-    vars n;
-      A; 
-      vars k;
-->      B; 
-        vars l;
-          C;
-        D;
-      E;
-    F
-
-
-    SeqVCGen(
-      (B; (vars l; C); D), 
-      |incr| = n + k, 
-      [(k, E); (n, F)]
-    )
-      
-   */
-
-  // function BlockWP(bcont: Block.Continuation, scont: Omni.Continuation) : iset<Omni.Continuation> 
-  //   requires |bcont| == |scont|
-  // {
-  //   iset posts: Omni.Continuation | 
-  //     && |posts| == |bcont|
-  //     && forall i: nat :: i < |bcont| ==> posts[i] 
-  // }
-
-  /**
-
-  s := s0  
-  bcont := (n1 s1); (n2 s2); (n3 s3); (n4 s4)
-
-  WP (var n3 
-        var n2 
-          var n1 s0 
-          s1 
-        s2 
-      s3) [All] ==
-  WP (var n3 
-        var n2 
-          var n1 s0 
-          s1 
-        s2) [WP(s3, All)] ==
-  WP (var n2 
-        var n1 s0 
-        s1 
-      s2) [Upd(n3, WP(s3, All)), Upd(n3, WP(s3, All))] ==
-  WP (var n2 
-        var n1 s0 
-        s1) [WP(s2, Upd(n3, WP(s3, All))), Upd(n3, WP(s3, All))] ==
-  WP (var n1 s0 
-      s1) [Upd(n2, WP(s2, Upd(n3, WP(s3, All)))), 
-           Upd(n2, WP(s2, Upd(n3, WP(s3, All)))), 
-                  Upd(n2, Upd(n3, WP(s3, All)))]] ==
-  WP (var n1 s0) 
-          [WP(s1,Upd(n2, WP(s2, Upd(n3, WP(s3, All))))), 
-                 Upd(n2, WP(s2, Upd(n3, WP(s3, All)))), 
-                  Upd(n2, Upd(n3, WP(s3, All)))]] ==
-    WP (s0) 
-          [Upd(n1, WP(s1,Upd(n2, WP(s2, Upd(n3, WP(s3, All)))))), 
-           Upd(n1, WP(s1,Upd(n2, WP(s2, Upd(n3, WP(s3, All)))))), 
-                 Upd(n1, Upd(n2, WP(s2, Upd(n3, WP(s3, All))))), 
-                 Upd(n1, Upd(n2, Upd(n3, WP(s3, All))))]] ==
-
-  
-   */
-
   ghost function BlockWPSeq(bcont: Block.Continuation, post: iset<State>) : Omni.Continuation
     ensures |BlockWPSeq(bcont, post)| == |bcont| + 1
   {
@@ -203,8 +135,6 @@ module VCGenOmni {
     requires bcont.JumpsDefined()
 
     decreases SeqSize(s) + bcont.Size()
-    // requires SeqIsDefinedOn(s, |context.incarnation|)
-    //requires bcont.IsDefinedOn(|context.incarnation|)
 
     ensures
       (forall e <- VCs :: e.Holds()) ==> 
@@ -241,11 +171,9 @@ module VCGenOmni {
         VCs := VCstmt + VCcont;
         if (forall e <- VCs :: e.Holds()) {
           forall st: State | context.IsSatisfiedOn(st) 
-            ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) {
-          }
+            ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) { }
         }
       } else {
-        // assume {:axiom} false;
         match stmt 
         case Seq(ss) =>
           VCs := SeqVCGen(ss + cont, context, bcont) by {
@@ -264,9 +192,7 @@ module VCGenOmni {
           VCs := VCs0 + VCs1;
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
-              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) {
-              
-            }
+              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) { }
           }
         case NewScope(n, body) =>
           var vNew, context' := context.AddVars(n);
@@ -286,13 +212,13 @@ module VCGenOmni {
                   ensures Omni.Sem(body, context.AdjustState(st).Update(vs), blockWP.UpdateHead(contWP).UpdateAndAdd(n)) {
                   var st' := st.MergeAt(vNew, vs);
                   assert context'.IsSatisfiedOn(st') by {
-                    forall e: Expr | e in context.ctx && st.Eval(e) ensures st'.Eval(e) {
+                    forall e: Expr | e in context.ctx && st.Eval(e) {
                       e.EvalDepthLemma(st, st');
                     }
                   }
                   calc {
                     Omni.SeqSem([body], context'.AdjustState(st'), updWP);
-                  == { assert context.AdjustState(st).Update(vs) == context'.AdjustState(st'); }
+                    { assert context.AdjustState(st).Update(vs) == context'.AdjustState(st'); }
                     Omni.SeqSem([body], context.AdjustState(st).Update(vs), updWP);
                   ==> { Omni.SeqSemSingle(body, context.AdjustState(st).Update(vs), updWP); }
                     Omni.Sem(body, context.AdjustState(st).Update(vs), updWP);
@@ -347,51 +273,3 @@ module VCGenOmni {
     }
   }
 }
-
-      
-      // match stmt 
-      // case Seq(ss) =>
-      //   SeqFunConcatLemmas(ss, cont);
-      //   VCs := SeqVCGen(ss + cont, context);
-      //   if (forall e <- VCs :: e.Holds()) {
-      //     forall st: State | context.IsSatisfiedOn(st) {
-      //       Omni.SeqLemma(ss, cont, context.AdjustState(st), AllStates);
-      //     }
-      //   }
-      // case Choice(ss0, ss1) =>
-      //   var VCs0 := SeqVCGen([ss0] + cont, context);
-      //   var VCs1 := SeqVCGen([ss1] + cont, context);
-      //   VCs := VCs0 + VCs1;
-      // case VarDecl(v, s) =>
-      //   var vNew, context' := context.AddVar();
-      //   VCs := SeqVCGen([s] + [WithPop(cont)], context') by {
-      //     SeqFunConcatLemmas([s], [WithPop(cont)]);
-      //   }
-      //   if (forall e <- VCs :: e.Holds()) {
-      //     forall st: State | context.IsSatisfiedOn(st)
-      //       ensures Omni.SeqSem([VarDecl(v, s)] + cont, context.AdjustState(st), AllStates) {
-      //       Omni.SemNest(VarDecl(v, s), cont, context.AdjustState(st), AllStates) by {
-      //         forall b: Value ensures Omni.Sem(s, context.AdjustState(st).Update(b), 
-      //           UpdateSet(Omni.SeqWP(cont, AllStates)))
-      //         { 
-      //           assert context.AdjustState(st).Update(b) == context'.AdjustState(st + [b]);
-      //           assert context'.IsSatisfiedOn(st + [b]) by {
-      //             forall e <- context'.ctx 
-      //               ensures (st + [b]).Eval(e) {
-      //                 e.EvalDepthLemma(st, st + [b]);
-      //             }
-      //           }
-      //           Omni.SemCons(s, context.AdjustState(st).Update(b), 
-      //             Omni.SeqWP([WithPop(cont)], AllStates), 
-      //             UpdateSet(Omni.SeqWP(cont, AllStates))) by 
-      //           {
-      //             forall st | Omni.SeqSem([WithPop(cont)], st, AllStates) 
-      //               ensures Omni.SeqSem(cont, Tail(st), AllStates) {
-      //               Omni.SeqFrameLemmaAll(cont, v, st);
-      //             }
-      //           }
-      //         }
-      //       }
-      //     }
-      //   }
- 
