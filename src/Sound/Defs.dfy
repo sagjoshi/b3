@@ -14,7 +14,7 @@ module Defs {
   }
 
   ghost function DeleteSet(n: nat, post: iset<State>): iset<State> {
-    iset st: State | exists st' <- post :: st == Tail(n, st')
+    iset st: State {:trigger} | exists st' <- post :: st == Tail(n, st')
   }
 
   function max(x: nat, y: nat): nat {
@@ -78,11 +78,6 @@ module Defs {
       forall s: State :: IsDefinedOn(|s|) ==> s.Eval(this)
     }
 
-    // lemma IsDefinedOnFVarsLemma(s: State, v: Variable)
-    //   requires v !in FVars()
-    //   ensures IsDefinedOn(s.Keys + {v}) ==> IsDefinedOn(s.Keys)
-    // {  }
-
     lemma EvalDepthLemma(s1: State, s2: State) 
       requires IsDefinedOn(|s1|)
       requires IsDefinedOn(|s2|)
@@ -96,21 +91,7 @@ module Defs {
           body.EvalDepthLemma(s1.Update([x]), s2.Update([x])); 
         }
       case _ =>
-    }
-
-    // lemma ShiftFVarsDepthLemma(i: Idx)
-    //   ensures ShiftFVars(i).Depth() == Depth() + i
-    // {
-    //   match this 
-    //   case Forall(v, body) => body.ShiftFVarsDepthLemma(i + 1);
-    //   case BVar(v) => 
-    //   if v >= i {
-
-    //   } else {
-    //   }
-    //   case _ =>
-    // }
-      
+    } 
   }
 
   function Eq(e1: Expr, e2: Expr): Expr {
