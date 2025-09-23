@@ -6,8 +6,7 @@ module Omni {
       Sem, SeqSem, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
       Continuation.UpdateHead
-  
-  // datatype Point = Point(post: iset<State>, variablesInScope: nat)
+
   newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
 
     ghost const head : iset<State> := this[0]
@@ -90,7 +89,6 @@ module Omni {
 
   ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) {
     if ss == [] then st in posts.head else
-    // Q: how to make trigger
     forall post': iset<State> :: 
       (forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts.UpdateHead(post'))
   }
@@ -105,7 +103,6 @@ module Omni {
     ensures Sem(s, st, posts')
   {
     match s
-    // case VarDecl(v, s) => assert UpdateSet(post) <= UpdateSet(post');
     case Seq(ss) => SeqSemCons(ss, st, posts, posts');
     case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
     case _ =>
@@ -123,7 +120,6 @@ module Omni {
       }
     }
   }
-  // SeqSem([s] + ss, st, post + posts) == Sem(s, st, [SeqWP(ss, posts)] + posts)
   lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
     requires Sem(s, st, posts.UpdateHead(SeqWP(ss, posts)))
     ensures SeqSem([s] + ss, st, posts)
