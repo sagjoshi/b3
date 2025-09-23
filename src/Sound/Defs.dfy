@@ -210,25 +210,6 @@ module Defs {
     if ss == [] then 0 else max(ss[0].JumpDepth(), SeqJumpDepth(ss[1..]))
   }
 
-  // lemma SeqShiftFVarsDepthLemma(ss: seq<Stmt>, i: Idx)
-  //   ensures SeqDepth(SeqShiftFVars(ss, i)) == SeqDepth(ss) + i
-  // {
-  //   if ss != [] {
-  //     assert ss == [ss[0]] + (ss[1..]);
-  //     ss[0].ShiftFVarsDepthLemma(i);
-  //   }
-  // }
-
-  // function SeqFVars(ss: seq<Stmt>): set<Variable> 
-  //   decreases ss
-  // {
-  //   if ss == [] then {} else ss[0].FVars() + SeqFVars(ss[1..])
-  // }
-
-  // function SeqBVars(ss: seq<Stmt>): set<Variable> {
-  //   if ss == [] then {} else ss[0].BVars() + SeqBVars(ss[1..])
-  // }
-
   function Conj(ctx: seq<Expr>): Expr 
   {
     if ctx == [] then BConst(true) else And(ctx[0], Conj(ctx[1..]))
@@ -282,31 +263,6 @@ module Defs {
     ensures Conj(ctx).IsDefinedOn(|s|)
     ensures s.Eval(Conj(ctx))
   { IsDefinedOnConjLemma(ctx, s); }
-
-  // predicate SeqNoShadowingNested(ss: seq<Stmt>, ghost parent: Stmt := Seq(ss)) 
-  //   requires forall s <- ss :: s < parent
-  //   decreases parent, |ss|
-  // {
-  //   forall s <- ss :: s.NoShadowing()
-  // }
-
-  // predicate SeqNoShadowing(ss: seq<Stmt>, ghost parent: Stmt := Seq(ss)) 
-  //   requires forall s <- ss :: s < parent
-  //   decreases parent, |ss| + 1
-  // {
-  //   && SeqNoShadowingNested(ss, parent)
-  //   && (forall i, j :: 0 <= i < j < |ss| ==> ss[i].BVars() !! ss[j].BVars())
-  // }
-
-  // predicate SeqWellFormed(ss: seq<Stmt>) {
-  //   if ss == [] then 
-  //     true 
-  //   else 
-  //     && ss[0].WellFormed()
-  //     && ss[0].BVars() !! SeqFVars(ss[1..]) 
-  //     && ss[0].BVars() !! SeqBVars(ss[1..])
-  //     && SeqWellFormed(ss[1..])
-  // }
 
   lemma SeqFunConcatLemmas(ss1: seq<Stmt>, ss2: seq<Stmt>)
     ensures SeqSize(ss1 + ss2) == SeqSize(ss1) + SeqSize(ss2)

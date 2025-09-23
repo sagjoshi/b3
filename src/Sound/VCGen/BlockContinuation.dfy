@@ -56,21 +56,6 @@ module Block {
       if this == [] then true else
         SeqIsDefinedOn(this[0].cont, this[1..].AllVarsInScope()) && this[1..].VarsDefined()
     }
-  
-  // function Depth'(s: Stmt): nat {
-  //   match s
-  //   case Check(e) => e.Depth()
-  //   case Assume(e) => e.Depth()
-  //   case Seq(ss) => SeqDepth'(ss)
-  //   case Assign(id, rhs) => max(id + 1, rhs.Depth())
-  //   case Choice(s0, s1) => max(Depth'(s0), Depth'(s1))
-  //   case NewScope(n, s) => if Depth'(s) <= n then 0 else Depth'(s) - n
-  //   case Escape(l) => 0
-  // }
-
-  // function SeqDepth'(ss: seq<Stmt>): nat {
-  //   if ss == [] then 0 else max(Depth'(ss[0]), SeqDepth'(ss[1..]))
-  // }
 
     lemma DefinedPrefix'(l: nat)
       requires l < |this|
