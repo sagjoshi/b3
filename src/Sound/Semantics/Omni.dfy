@@ -1,9 +1,9 @@
 module Omni {
   import opened Defs
   export
-    provides Defs, SeqLemma, SemNest, WP, SemCons//, SeqFrameLemmaAll
+    provides Defs, SeqLemma, SemNest, WP, SemCons, SeqSemSingle
     reveals 
-      Sem, SeqSem, SeqWP, SemSingle,
+      Sem, SeqSem, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
       Continuation.UpdateHead
   
@@ -16,7 +16,10 @@ module Omni {
       this[0 := post]
     }
 
-    ghost function Update(variablesInScope: nat): Continuation {
+    ghost function Update(variablesInScope: nat): Continuation 
+      ensures |this| == |Update(variablesInScope)|
+      ensures forall l: nat :: l < |this| ==> Update(variablesInScope)[l] == UpdateSet(variablesInScope, this[l])
+    {
       var head' := UpdateSet(variablesInScope, head);
       if |this| == 1 then [head'] else [head'] + this[1..].Update(variablesInScope)
     }
@@ -122,7 +125,7 @@ module Omni {
   }
   // SeqSem([s] + ss, st, post + posts) == Sem(s, st, [SeqWP(ss, posts)] + posts)
   lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
-    requires Sem(s, st, posts[0 := SeqWP(ss, posts)])
+    requires Sem(s, st, posts.UpdateHead(SeqWP(ss, posts)))
     ensures SeqSem([s] + ss, st, posts)
   {
     forall post': iset<State> | (forall st: State :: SeqSem(ss, st, posts) ==> st in post') {
@@ -141,7 +144,7 @@ module Omni {
 
   lemma SeqSemNest(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, posts: Continuation) 
     requires SeqSem(ss1 + ss2, st, posts)
-    ensures SeqSem(ss1, st, posts[0 := SeqWP(ss2, posts)])
+    ensures SeqSem(ss1, st, posts.UpdateHead(SeqWP(ss2, posts)))
   {
     if ss1 == [] {
       assert [] + ss2 == ss2;

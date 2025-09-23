@@ -145,7 +145,7 @@ module Defs {
       case Assign(_, _) => 1
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
       case NewScope(n, s) => 2 + s.Size()
-      case Escape(l) => 1
+      case Escape(l) => 2
     }
 
     function Depth(): Idx {
@@ -340,6 +340,31 @@ module Defs {
     }
     function Update(vals: State): State {
       vals + this
+    }
+
+    function UpdateOrAdd(i: Idx, val: Value): State 
+      ensures |UpdateOrAdd(i, val)| > i
+      ensures |UpdateOrAdd(i, val)| >= |this|
+      ensures forall j: Idx :: j < |this| ==> j != i ==> UpdateOrAdd(i, val)[j] == this[j]
+      ensures UpdateOrAdd(i, val)[i] == val
+    {
+      if |this| <= i then this + seq(i - |this|, i => false) + [val] else this[i := val]
+    }
+
+    function MergeAt(i: Idx, vals: State): State 
+      ensures |MergeAt(i, vals)| > i + |vals|
+      ensures |MergeAt(i, vals)| >= |this|
+      ensures forall j: Idx :: j < |this| ==> j < i || j >= i + |vals| ==> MergeAt(i, vals)[j] == this[j]
+      ensures forall j: Idx :: i <= j < i + |vals| ==> MergeAt(i, vals)[j] == vals[j - i]
+    {
+      seq(max(i + |vals| + 1, |this|), j requires j < max(i + |vals| + 1, |this|) => 
+        if j < |this| then 
+          if j < i || j >= i + |vals| then 
+            this[j]
+          else vals[j - i]
+        else if i <= j && j < i + |vals| then 
+          vals[j - i] 
+        else false)
     }
   }
 }
