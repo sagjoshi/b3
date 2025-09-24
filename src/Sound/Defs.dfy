@@ -64,6 +64,8 @@ module Defs {
       case Forall(v, body) => if body.Depth() == 0 then 0 else body.Depth() - 1
     }
 
+    ghost function Sem(): iset<State> { iset st: State | IsDefinedOn(|st|) && st.Eval(this) }
+
     predicate IsDefinedOn(d: Idx) {
       Depth() <= d
     }
@@ -117,6 +119,7 @@ module Defs {
     | NewScope(n: nat, s: Stmt)
     | Escape(l: nat)
     | Choice(0: Stmt, 1: Stmt)
+    | Loop(inv: Expr, body: Stmt)
   {
     function Size(): nat {
       match this
@@ -127,6 +130,7 @@ module Defs {
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
       case NewScope(n, s) => 2 + s.Size()
       case Escape(l) => 2
+      case Loop(inv, body) => 1 + body.Size()
     }
 
     function Depth(): Idx {
@@ -138,6 +142,7 @@ module Defs {
       case Choice(s0, s1) => max(s0.Depth(), s1.Depth())
       case NewScope(n, s) => if s.Depth() <= n then 0 else s.Depth() - n
       case Escape(l) => 0
+      case Loop(inv, body) => max(inv.Depth(), body.Depth())
     }
 
     function JumpDepth() : Idx {
@@ -149,6 +154,7 @@ module Defs {
       case Choice(s0, s1) => max(s0.JumpDepth(), s1.JumpDepth())
       case NewScope(n, s) => if s.JumpDepth() == 0 then 0 else s.JumpDepth() - 1
       case Escape(l) => l
+      case Loop(inv, body) => body.JumpDepth()
     }
 
     predicate IsDefinedOn(d: Idx) {
@@ -275,6 +281,8 @@ module Defs {
       case Forall(v, body) => forall x: bool :: Update([x]).Eval(body)
       case BVar(v)         => this[v]
     }
+
+
     function Update(vals: State): State {
       vals + this
     }
