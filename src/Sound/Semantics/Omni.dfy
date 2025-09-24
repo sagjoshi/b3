@@ -55,6 +55,12 @@ module Omni {
     {
       ([head] + this).LeqUpdate(variablesInScope, [cont.head] + cont);
     }
+
+    lemma LeqUpdateHead(post: iset<State>, cont: Continuation) 
+      requires Leq(cont) 
+      ensures UpdateHead(post).Leq(cont.UpdateHead(post))
+    {
+    }
   }
 
   /**
@@ -67,7 +73,7 @@ module Omni {
 
    */
 
-  greatest predicate SemSingle/*[nat]*/(s: Stmt, st: State, post: iset<State>) 
+  ghost predicate SemSingle(s: Stmt, st: State, post: iset<State>) 
     requires s.Single()
   {
     match s
@@ -83,7 +89,7 @@ module Omni {
       && st[x := st.Eval(v)] in post
   }
 
-  greatest predicate Sem/*[nat]*/(s: Stmt, st: State, posts: Continuation) {
+  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
     if s.Single() then SemSingle(s, st, posts.head) else
     match s
     case Seq(ss)        => SeqSem(ss, st, posts)
@@ -94,14 +100,44 @@ module Omni {
     case Loop(inv, body) => 
       && inv.IsDefinedOn(|st|)
       && st.Eval(inv)
-      && Sem(Seq([body, Loop(inv, body)]), st, posts)
+      && forall st': State :: 
+        inv.IsDefinedOn(|st'|) && st'.Eval(inv) ==> Sem(body, st', posts.UpdateHead(inv.Sem()))
+  }
+
+  greatest predicate SemReferenced(s: Stmt, st: State, posts: Continuation) {
+    match s
+    case Check(e)       => 
+      && e.IsDefinedOn(|st|) 
+      && (st.Eval(e) &&  st in posts.head)
+    case Assume(e)      => 
+      && e.IsDefinedOn(|st|) 
+      && (st.Eval(e) ==> st in posts.head)
+    case Assign(x, v)   => 
+      && x < |st|
+      && v.IsDefinedOn(|st|) 
+      && st[x := st.Eval(v)] in posts.head
+    case Seq(ss)        => SeqSemReferenced(ss, st, posts)
+    case Choice(s0, s1) => SemReferenced(s0, st, posts) && SemReferenced(s1, st, posts)
+    case NewScope(n, s) => 
+      forall vs: State :: |vs| == n ==> SemReferenced(s, st.Update(vs), posts.UpdateAndAdd(n))
+    case Escape(l)      => |posts| > l && st in posts[l]
+    case Loop(inv, body) => 
+      && inv.IsDefinedOn(|st|)
+      && st.Eval(inv)
+      && SemReferenced(Seq([body, Loop(inv, body)]), st, posts)
+  }
+
+  greatest predicate SeqSemReferenced(ss: seq<Stmt>, st: State, posts: Continuation) {
+    if ss == [] then st in posts.head else
+    forall post': iset<State> :: 
+      (forall st: State :: SeqSemReferenced(ss[1..], st, posts) ==> st in post') ==> SemReferenced(ss[0], st, posts.UpdateHead(post'))
   }
 
   ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
     iset st: State | Sem(s, st, posts)
   }
 
-  greatest predicate SeqSem/*[nat]*/(ss: seq<Stmt>, st: State, posts: Continuation) {
+  ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
       (forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts.UpdateHead(post'))
@@ -111,7 +147,7 @@ module Omni {
     iset st: State | SeqSem(ss, st, cont)
   }
 
-  greatest lemma SemCons/*[nat]*/(s: Stmt, st: State, posts: Continuation, posts': Continuation)
+  lemma SemCons(s: Stmt, st: State, posts: Continuation, posts': Continuation)
     requires Sem(s, st, posts)
     requires posts.Leq(posts')
     ensures Sem(s, st, posts')
@@ -119,10 +155,11 @@ module Omni {
     match s
     case Seq(ss) => SeqSemCons(ss, st, posts, posts');
     case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
+    case Loop(inv, body) => posts.LeqUpdateHead(inv.Sem(), posts');
     case _ =>
   }
 
-  greatest lemma SeqSemCons(ss: seq<Stmt>, st: State, posts: Continuation, posts': Continuation)
+  lemma SeqSemCons(ss: seq<Stmt>, st: State, posts: Continuation, posts': Continuation)
     requires SeqSem(ss, st, posts)
     requires posts.Leq(posts')
     ensures SeqSem(ss, st, posts')
@@ -135,7 +172,7 @@ module Omni {
     }
   }
 
-  greatest lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
+  lemma SemNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
     requires Sem(s, st, posts.UpdateHead(SeqWP(ss, posts)))
     ensures SeqSem([s] + ss, st, posts)
   {
@@ -152,7 +189,6 @@ module Omni {
     assert [s][1..] == [];
     assert posts == posts.UpdateHead(posts.head);
   }
-
 
   lemma SeqSemNest(ss1: seq<Stmt>, ss2: seq<Stmt>, st: State, posts: Continuation) 
     requires SeqSem(ss1 + ss2, st, posts)
@@ -179,7 +215,7 @@ module Omni {
     |st|
   }
 
-  greatest lemma SemSeqLemma(ss: seq<Stmt>, st: State, posts: Continuation)
+  lemma SemSeqLemma(ss: seq<Stmt>, st: State, posts: Continuation)
     requires SeqSem(ss, st, posts)
     ensures Sem(Seq(ss), st, posts)
   {
@@ -199,215 +235,38 @@ module Omni {
     }
   }
 
-  lemma SemSeqLemmak(k: ORDINAL, ss: seq<Stmt>, st: State, posts: Continuation)
-    // requires k.Offset > 0
-    requires SeqSem#[k](ss, st, posts)
-    // ensures Sem#[k+1](Seq(ss), st, posts)
-    ensures Sem#[k](Seq(ss), st, posts)
+  lemma SemLoopUnroll(s: Stmt, inv: Expr, body: Stmt, st: State, posts: Continuation)
+    requires Sem(Loop(inv, body), st, posts)
+    ensures Sem(Seq([body, Loop(inv, body)]), st, posts)
   {
-
-  }
-
-  ghost function SeqWPk(k: ORDINAL, ss: seq<Stmt>, cont: Continuation): iset<State> {
-    iset st: State | SeqSem#[k](ss, st, cont)
-  }
-
-  lemma SemNestk(k: ORDINAL, s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
-    requires Sem#[k](s, st, posts.UpdateHead(SeqWPk(k, ss, posts)))
-    ensures SeqSem#[k]([s] + ss, st, posts)
-  {
-    // forall post': iset<State> | (forall st: State :: SeqSem(ss, st, posts) ==> st in post') {
-    //   SemCons(s, st, posts.UpdateHead(SeqWP(ss, posts)), posts.UpdateHead(post'));
-    // }
-  }
-
-  lemma SemConsk/*[nat]*/(k: ORDINAL, s: Stmt, st: State, posts: Continuation, posts': Continuation)
-    requires Sem#[k](s, st, posts)
-    requires posts.Leq(posts')
-    ensures Sem#[k](s, st, posts')
-  {
-    // match s
-    // case Seq(ss) => SeqSemCons(ss, st, posts, posts');
-    // case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
-    // case _ =>
-  }
-
-  lemma SeqSemSingle'k(k: ORDINAL, s: Stmt, st: State, posts: Continuation)
-    requires Sem#[k](s, st, posts)
-    ensures SeqSem#[k]([s], st, posts)
-  {
-    // assert [s][0] == s;
-    // assert [s][1..] == [];
-    // assert posts.UpdateHead(posts.head) == posts;
-    // forall post': iset<State> | (forall st: State :: SeqSem([], st, posts) ==> st in post') 
-    //   ensures Sem(s, st, posts.UpdateHead(post')) {
-    //   SemCons(s, st, posts, posts.UpdateHead(post'));
-    // }
-  }
-  /**
-    (st, Loop(body)) ===> posts
-
-    |-
-
-    exists inv', 
-      && forall st <- inv' :: Sem(body, st, posts.Cons(inv'))
-
-  
-  inv' := iset st': State | 
-    exists n, 
-      forall post', 
-        SeqSem(SeqOf(n, body), st, posts.Cons(post')) ==> st' in post'
-  
-   */
-
-  lemma SemLoopk(k: ORDINAL, inv: Expr, body: Stmt, st: State, posts: Continuation)
-    requires forall st <- inv.Sem() :: Sem(body, st, posts.Cons(inv.Sem()))
-    requires st in inv.Sem()
-    ensures Sem#[k](Loop(inv, body), st, posts.Cons(inv.Sem()))
-    decreases k
-  {
-    if k.Offset > 0 {
-    assert inv.IsDefinedOn(StateSize(st)) && st.Eval(inv); 
-    assert Sem#[k - 1](Seq([body, Loop(inv, body)]), st, posts.Cons(inv.Sem())) by {
-      SemSeqLemmak(k - 1, [body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-        assert SeqSem#[k - 1]([body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-          assert [body] + [Loop(inv, body)] == [body, Loop(inv, body)];
-          SemNestk(k - 1,body, [Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-            assert 
-              posts.Cons(inv.Sem()).UpdateHead(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem()))) ==
-              posts.Cons(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())));
-            assert inv.Sem() <= SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())) by {
-              forall st | st in inv.Sem() 
-                ensures st in SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())) {
-                  SeqSemSingle'k(k - 1, Loop(inv, body), st, posts.Cons(inv.Sem())) by {
-                    assert Sem#[k - 1](Loop(inv, body), st, posts.Cons(inv.Sem())) by {
-                    SemLoopk(k - 1, inv, body, st, posts);
-                  }
-                }
-              }
-            }
-            SemConsk(k - 1, body, st, posts.Cons(inv.Sem()), posts.Cons(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem()))));
-          }
+    SemNest(body, [Loop(inv, body)], st, posts) by {
+      SemCons(body, st, posts.UpdateHead(inv.Sem()), posts.UpdateHead(SeqWP([Loop(inv, body)], posts))) by {
+        forall st: State | st in inv.Sem() ensures SeqSem([Loop(inv, body)], st, posts) {
+          SeqSemSingle'(Loop(inv, body), st, posts);
         }
       }
     }
   }
+
+  greatest lemma SemSound(s: Stmt, st: State, posts: Continuation)
+    requires Sem(s, st, posts)
+    ensures SemReferenced(s, st, posts)
+  {
+    match s
+    case Seq(ss) => SeqSemSound(ss, st, posts);
+    case Loop(inv, body) => SemLoopUnroll(s, inv, body, st, posts);
+    case _ =>
   }
 
-  // lemma SeqSemSingle'k(k: ORDINAL, s: Stmt, st: State, posts: Continuation)
-  //   requires Sem#[k](s, st, posts)
-  //   ensures SeqSem#[k]([s], st, posts)
-  // {
-  //   // SemNestk(k, s, [], st, posts);
-  // }
-
-  // lemma SemConsk/*[nat]*/(k: ORDINAL, s: Stmt, st: State, posts: Continuation, posts': Continuation)
-  //   requires Sem#[k](s, st, posts)
-  //   requires posts.Leq(posts')
-  //   ensures Sem#[k](s, st, posts')
-  // {
-  //   // match s
-  //   // case Seq(ss) => SeqSemConsk(k, ss, st, posts, posts');
-  //   // case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
-  //   // case _ =>
-  // }
-
-  // lemma SemSeqLemmak(k: ORDINAL, ss: seq<Stmt>, st: State, posts: Continuation)
-  //   requires SeqSem#[k](ss, st, posts)
-  //   ensures Sem#[k](Seq(ss), st, posts)
-  // {
-
-  // }
-
-  // lemma SemNestk(k: ORDINAL, s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
-  //   requires Sem#[k](s, st, posts.UpdateHead(SeqWPk(k, ss, posts)))
-  //   ensures SeqSem#[k]([s] + ss, st, posts)
-  // {
-  //   forall post': iset<State> | (forall st: State :: SeqSem#[k](ss, st, posts) ==> st in post') {
-  //     SemConsk(k, s, st, posts.UpdateHead(SeqWPk(k, ss, posts)), posts.UpdateHead(post'));
-  //   }
-  // }
-
-  // ghost function SeqWPk(k: ORDINAL, ss: seq<Stmt>, cont: Continuation): iset<State> {
-  //   iset st: State | SeqSem#[k](ss, st, cont)
-  // }
-
-  // greatest lemma InSeqWPLemma(k: ORDINAL, ss: seq<Stmt>, st: State, posts: Continuation)
-  //   requires SeqSem#[k](ss, st, posts)
-  //   ensures st in SeqWPk(k, ss, posts)
-  // { 
-
-  // }
-
-  // lemma SemLoop(k: ORDINAL, inv: Expr, body: Stmt, st: State, posts: Continuation)
-  //   requires forall st <- inv.Sem() :: Sem#[k](body, st, posts.Cons(inv.Sem()))
-  //   requires st in inv.Sem()
-  //   ensures Sem#[k](Loop(inv, body), st, posts.Cons(inv.Sem()))
-  // {
-  //   assert inv.IsDefinedOn(StateSize(st)) && st.Eval(inv); 
-  //   assert Sem#[k - 1](Seq([body, Loop(inv, body)]), st, posts.Cons(inv.Sem())) by {
-  //     SemSeqLemma#[k - 1]([body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //       // BUG: this is not working
-  //       assert SeqSem#[k - 1]([body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //         assert [body] + [Loop(inv, body)] == [body, Loop(inv, body)];
-  //         SemNestk(k - 1, body, [Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //           assert 
-  //             posts.Cons(inv.Sem()).UpdateHead(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem()))) ==
-  //             posts.Cons(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())));
-  //           assert inv.Sem() <= SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())) by {
-  //             forall st | st in inv.Sem() 
-  //               ensures st in SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem())) {
-  //               InSeqWPLemma(k - 1, [Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //                 SeqSemSingle'k(k - 1, Loop(inv, body), st, posts.Cons(inv.Sem())) by {
-  //                   SemLoop(k - 1, inv, body, st, posts);
-  //                 }
-  //               }
-  //             }
-  //           }
-  //           SemConsk(k - 1, body, st, posts.Cons(inv.Sem()), posts.Cons(SeqWPk(k - 1, [Loop(inv, body)], posts.Cons(inv.Sem()))));
-  //         }
-  //       }
-  //     }
-  //   }
-  // }
-  
-
-  greatest lemma SemLoop(inv: Expr, body: Stmt, st: State, posts: Continuation)
-    requires forall st <- inv.Sem() :: Sem(body, st, posts.Cons(inv.Sem())) // [inv.Sem()] + posts
-    requires st in inv.Sem()
-    ensures Sem(Loop(inv, body), st, posts.Cons(iset{}))
-  // {
-  //   assert inv.IsDefinedOn(StateSize(st)) && st.Eval(inv); 
-  //   assert Sem(Seq([body, Loop(inv, body)]), st, posts.Cons(inv.Sem())) by {
-  //     SemSeqLemma([body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //       // BUG: this is not working
-  //       // assert SeqSem([body, Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //         assert [body] + [Loop(inv, body)] == [body, Loop(inv, body)];
-  //         SemNest(body, [Loop(inv, body)], st, posts.Cons(inv.Sem())) by {
-  //           assert 
-  //             posts.Cons(inv.Sem()).UpdateHead(SeqWP([Loop(inv, body)], posts.Cons(inv.Sem()))) ==
-  //             posts.Cons(SeqWP([Loop(inv, body)], posts.Cons(inv.Sem())));
-  //           assert inv.Sem() <= SeqWP([Loop(inv, body)], posts.Cons(inv.Sem())) by {
-  //             forall st | st in inv.Sem() 
-  //               ensures st in SeqWP([Loop(inv, body)], posts.Cons(inv.Sem())) {
-  //                 SeqSemSingle'(Loop(inv, body), st, posts.Cons(inv.Sem())) by {
-  //                   assert Sem(Loop(inv, body), st, posts.Cons(inv.Sem())) by {
-  //                   SemLoop(inv, body, st, posts);
-  //                 }
-  //               }
-  //             }
-  //           }
-  //           SemCons(body, st, posts.Cons(inv.Sem()), posts.Cons(SeqWP([Loop(inv, body)], posts.Cons(inv.Sem()))));
-  //         }
-  //     }
-  //   }
-  // }
-
-  // lemma SemLoop(inv: Expr, body: Stmt, st: State, posts: Continuation)
-  //   ensures Sem(body, st, posts.UpdateHead(SeqWP([body, Loop(inv, body)], posts)))
-  //   requires Sem(Loop(inv, body), st, posts)
-  // // {
-
-  // // }
-  
+  greatest lemma SeqSemSound(ss: seq<Stmt>, st: State, posts: Continuation)
+    requires SeqSem(ss, st, posts)
+    ensures SeqSemReferenced(ss, st, posts)
+  {
+    if ss != [] {
+      forall post': iset<State> | (forall st: State :: SeqSemReferenced(ss[1..], st, posts) ==> st in post') 
+        ensures SemReferenced(ss[0], st, posts.UpdateHead(post')) {
+        SemSound(ss[0], st, posts.UpdateHead(post'));
+      }
+    }
+  } 
 }
