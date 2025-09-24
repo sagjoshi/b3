@@ -234,3 +234,22 @@ procedure Reinit(u: int, inout v: int, out w: int) {
   reinit v
   reinit u, v, u, u, v, w
 }
+
+// ------- long comments
+
+/*
+  here is a * long * comment ** /
+  it ends here */
+
+/* here is a /* nested comment */ and /*another*/*/
+
+/* a long comment ignores
+  // one-line comments, so this one stops here */
+
+// a one-line comment ignores the start of a /* long comment
+
+procedure TheWorldContinuesHere() {
+  /* comment within */
+}
+
+/* this final comment runs into /* the end of file, which implicitly closes all open long comments

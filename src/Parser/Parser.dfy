@@ -71,12 +71,41 @@ module Parser {
 
   function StringConcat(s: string, t: string): string { s + t }
 
-  // W = whitespace or comment
-  const W: B<string> :=
+  // W1 = whitespace or single-line comment
+  const W1: B<string> :=
     WS.I_I(
       S("//").I_I(notNewline.Rep()).M2(MId, StringConcat)
       .I_I(O([S("\n"), EOS.M(x => "")])).M2(MId, StringConcat)
       .I_I(WS).M2(MId, StringConcat).Rep()
+    ).M((wsMore: (string, seq<string>)) => wsMore.0 + Seq.Join(Seq.Map(MId, wsMore.1), ""))
+
+  function PositionAfterEndOfLongComment(input: Input, start: nat := 0, end: nat := P.A.Length(input)): (len: nat)
+    requires start <= end <= P.A.Length(input)
+    ensures start <= len <= end
+    decreases end - start
+  {
+    if end <= start + 2 then
+      end
+    else if P.A.CharAt(input, start) == '*' && P.A.CharAt(input, start + 1) == '/' then
+      start + 2
+    else if P.A.CharAt(input, start) == '/' && P.A.CharAt(input, start + 1) == '*' then
+      var next := PositionAfterEndOfLongComment(input, start + 2, end);
+      PositionAfterEndOfLongComment(input, next, end)
+    else
+      PositionAfterEndOfLongComment(input, start + 1, end)
+  }
+
+  const parseUntilEndOfLongComment: B<string> :=
+    B((input: Input) =>
+        var n := PositionAfterEndOfLongComment(input, 0, P.A.Length(input));
+        P.ParseSuccess(P.A.Slice(input, 0, n).View(), P.A.Drop(input, n))
+    )
+
+  // W = whitespace or comment
+  const W: B<string> :=
+    W1.I_I(
+      S("/*").I_I(parseUntilEndOfLongComment).M2(MId, StringConcat)
+      .I_I(W1).M2(MId, StringConcat).Rep()
     ).M((wsMore: (string, seq<string>)) => wsMore.0 + Seq.Join(Seq.Map(MId, wsMore.1), ""))
 
   const canStartIdentifierChar := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"

@@ -262,3 +262,7 @@ procedure Reinit(u: int, inout v: int, out w: int)
   reinit v
   reinit u, v, u, u, v, w
 }
+
+procedure TheWorldContinuesHere()
+{
+}
