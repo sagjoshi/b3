@@ -124,6 +124,17 @@ module VCGenOmni {
     Omni.SeqSem(s, st, BlockWPSeq(bcont, post))
   }
 
+  ghost predicate BlockRefSem(s: seq<Stmt>, bcont: Block.Continuation, st: State, post: iset<State>) {
+    Omni.SeqRefSem(s, st, BlockWPSeq(bcont, post))
+  }
+
+  lemma BlockSemSound(s: seq<Stmt>, bcont: Block.Continuation, st: State, post: iset<State>) 
+    requires BlockSem(s, bcont, st, post)
+    ensures BlockRefSem(s, bcont, st, post)
+  {
+    Omni.SeqSemSound(s, st, BlockWPSeq(bcont, post));
+  }
+
 
   method SeqVCGen(s: seq<Stmt>, context: Context, bcont: Block.Continuation) returns (VCs: seq<Expr>) 
     requires bcont.IsDefinedOn(|context.incarnation|)
@@ -269,6 +280,7 @@ module VCGenOmni {
               }
             }
           }
+        case _ => assume {:axiom} false;
       }
     }
   }

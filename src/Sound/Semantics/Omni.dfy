@@ -1,7 +1,7 @@
 module Omni {
   import opened Defs
   export
-    provides Defs, SeqLemma, SemNest, WP, SemCons, SeqSemSingle
+    provides Defs, SeqLemma, SemNest, WP, SemCons, SeqSemSingle, RefSem, SemSound, SeqRefSem, SeqSemSound
     reveals 
       Sem, SeqSem, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
@@ -104,7 +104,7 @@ module Omni {
         inv.IsDefinedOn(|st'|) && st'.Eval(inv) ==> Sem(body, st', posts.UpdateHead(inv.Sem()))
   }
 
-  greatest predicate SemReferenced(s: Stmt, st: State, posts: Continuation) {
+  greatest predicate RefSem(s: Stmt, st: State, posts: Continuation) {
     match s
     case Check(e)       => 
       && e.IsDefinedOn(|st|) 
@@ -116,21 +116,21 @@ module Omni {
       && x < |st|
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in posts.head
-    case Seq(ss)        => SeqSemReferenced(ss, st, posts)
-    case Choice(s0, s1) => SemReferenced(s0, st, posts) && SemReferenced(s1, st, posts)
+    case Seq(ss)        => SeqRefSem(ss, st, posts)
+    case Choice(s0, s1) => RefSem(s0, st, posts) && RefSem(s1, st, posts)
     case NewScope(n, s) => 
-      forall vs: State :: |vs| == n ==> SemReferenced(s, st.Update(vs), posts.UpdateAndAdd(n))
+      forall vs: State :: |vs| == n ==> RefSem(s, st.Update(vs), posts.UpdateAndAdd(n))
     case Escape(l)      => |posts| > l && st in posts[l]
     case Loop(inv, body) => 
       && inv.IsDefinedOn(|st|)
       && st.Eval(inv)
-      && SemReferenced(Seq([body, Loop(inv, body)]), st, posts)
+      && RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
 
-  greatest predicate SeqSemReferenced(ss: seq<Stmt>, st: State, posts: Continuation) {
+  greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
-      (forall st: State :: SeqSemReferenced(ss[1..], st, posts) ==> st in post') ==> SemReferenced(ss[0], st, posts.UpdateHead(post'))
+      (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') ==> RefSem(ss[0], st, posts.UpdateHead(post'))
   }
 
   ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
@@ -250,7 +250,7 @@ module Omni {
 
   greatest lemma SemSound(s: Stmt, st: State, posts: Continuation)
     requires Sem(s, st, posts)
-    ensures SemReferenced(s, st, posts)
+    ensures RefSem(s, st, posts)
   {
     match s
     case Seq(ss) => SeqSemSound(ss, st, posts);
@@ -260,11 +260,11 @@ module Omni {
 
   greatest lemma SeqSemSound(ss: seq<Stmt>, st: State, posts: Continuation)
     requires SeqSem(ss, st, posts)
-    ensures SeqSemReferenced(ss, st, posts)
+    ensures SeqRefSem(ss, st, posts)
   {
     if ss != [] {
-      forall post': iset<State> | (forall st: State :: SeqSemReferenced(ss[1..], st, posts) ==> st in post') 
-        ensures SemReferenced(ss[0], st, posts.UpdateHead(post')) {
+      forall post': iset<State> | (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') 
+        ensures RefSem(ss[0], st, posts.UpdateHead(post')) {
         SemSound(ss[0], st, posts.UpdateHead(post'));
       }
     }
