@@ -119,6 +119,35 @@ module Context {
       vNew := v';
     }
 
+    method AddVarSet(vars: set<Idx>) returns (ghost vNew: Idx, context: Context)
+      requires forall v <- vars :: v < |incarnation|
+      ensures context.ctx         == ctx
+      ensures |context.incarnation| == |incarnation|
+      ensures forall i: nat :: i in vars ==> context.incarnation[i] == vNew + i
+      ensures vNew > SeqMax(incarnation)
+      ensures forall c <- ctx :: c.Depth() < vNew
+      ensures SeqDepthExpr(ctx) < vNew
+      ensures forall i: nat :: i !in vars && i < |incarnation| ==> context.incarnation[i] == incarnation[i]
+      ensures forall i <- context.incarnation :: i <= vNew + Max'(vars)
+    {
+      var vars' := vars; 
+      var incr' := incarnation;
+      var v' := FreshIdx();
+      vNew := v';
+      while vars' != {}
+        invariant |incr'| == |incarnation|
+        invariant vars' <= vars
+        invariant forall i: nat :: i in vars - vars' ==> incr'[i] == vNew + i
+        invariant forall i: nat :: i !in vars - vars' && i < |incarnation| ==> incr'[i] == incarnation[i]
+        invariant forall i: nat :: i < |incarnation| ==> incr'[i] <= vNew + Max'(vars)
+      {
+        var v :| v in vars';
+        vars' := vars' - {v};
+        incr' := incr'[v := v' + v];
+      }
+      context := Context(ctx, incr');
+    }
+
     function Delete(n: nat): Context
       requires n <= |incarnation|
     {

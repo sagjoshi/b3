@@ -1,17 +1,29 @@
 module Omni {
   import opened Defs
   export
-    provides Defs, SeqLemma, SemNest, WP, SemCons, SeqSemSingle, RefSem, SemSound, SeqRefSem, SeqSemSound
+    provides Defs, 
+      SeqLemma, SemNest, SemCons, SeqSemSingle, 
+      RefSem, SemSound, SeqRefSem, SeqSemSound, 
+      SemLoopWithCont, InvSem
     reveals 
-      Sem, SeqSem, SeqWP, SemSingle, 
+      Sem, SeqSem, WP, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
-      Continuation.UpdateHead
+      Continuation.UpdateHead, PreservesInv
 
-  // Q: how to overcome the type error here?
-  // function Cons(post: iset<State>, posts: seq<iset<State>>): Continuation {
-  //   var x: Continuation := [post] + posts;
-  //   x
-  // }
+  /**
+  
+  Loop(inv, body(x))
+  ---
+  cc
+
+  check inv;
+  x := *
+  assume inv;
+  body(x);
+  check inv;
+  ----
+  cc
+   */
 
   newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
 
@@ -89,6 +101,12 @@ module Omni {
       && st[x := st.Eval(v)] in post
   }
 
+  ghost predicate PreservesInv(inv: iset<State>, body: Stmt, posts: Continuation)
+  { 
+    forall st': State :: 
+      st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
+  }
+
   ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
     if s.Single() then SemSingle(s, st, posts.head) else
     match s
@@ -97,11 +115,11 @@ module Omni {
     case NewScope(n, s) => 
       forall vs: State :: |vs| == n ==> Sem(s, st.Update(vs), posts.UpdateAndAdd(n))
     case Escape(l)      => |posts| > l && st in posts[l]
-    case Loop(inv, body) => 
-      && inv.IsDefinedOn(|st|)
-      && st.Eval(inv)
-      && forall st': State :: 
-        inv.IsDefinedOn(|st'|) && st'.Eval(inv) ==> Sem(body, st', posts.UpdateHead(inv.Sem()))
+    case Loop(_, body) => 
+      exists inv: iset<State> :: 
+        && st in inv
+        && forall st': State :: 
+          st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
   }
 
   greatest predicate RefSem(s: Stmt, st: State, posts: Continuation) {
@@ -122,8 +140,8 @@ module Omni {
       forall vs: State :: |vs| == n ==> RefSem(s, st.Update(vs), posts.UpdateAndAdd(n))
     case Escape(l)      => |posts| > l && st in posts[l]
     case Loop(inv, body) => 
-      && inv.IsDefinedOn(|st|)
-      && st.Eval(inv)
+      // && inv.IsDefinedOn(|st|)
+      // && st.Eval(inv)
       && RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
 
@@ -155,7 +173,7 @@ module Omni {
     match s
     case Seq(ss) => SeqSemCons(ss, st, posts, posts');
     case NewScope(n, s) => posts.LeqUpdateAndAdd(n, posts');
-    case Loop(inv, body) => posts.LeqUpdateHead(inv.Sem(), posts');
+    case Loop(_, body) => forall inv { posts.LeqUpdateHead(inv, posts'); }
     case _ =>
   }
 
@@ -235,14 +253,31 @@ module Omni {
     }
   }
 
+  lemma SemLoopLemma(inv: Expr, body: Stmt, st: State, posts: Continuation, inv': iset<State>)
+    requires st in inv'
+    requires forall st': State :: 
+      st' in inv' ==> Sem(body, st', posts.UpdateHead(inv'))
+    ensures Sem(Loop(inv, body), st, posts)
+  {  }
+
+  lemma PreservesInvLemma(inv: iset<State>, body: Stmt, posts: Continuation)
+    requires PreservesInv(inv, body, posts)
+    ensures forall st': State :: 
+      st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
+  {  } 
+
   lemma SemLoopUnroll(s: Stmt, inv: Expr, body: Stmt, st: State, posts: Continuation)
     requires Sem(Loop(inv, body), st, posts)
     ensures Sem(Seq([body, Loop(inv, body)]), st, posts)
   {
+    var invEx :| st in invEx && PreservesInv(invEx, body, posts);
+    PreservesInvLemma(invEx, body, posts);
     SemNest(body, [Loop(inv, body)], st, posts) by {
-      SemCons(body, st, posts.UpdateHead(inv.Sem()), posts.UpdateHead(SeqWP([Loop(inv, body)], posts))) by {
-        forall st: State | st in inv.Sem() ensures SeqSem([Loop(inv, body)], st, posts) {
-          SeqSemSingle'(Loop(inv, body), st, posts);
+      SemCons(body, st, posts.UpdateHead(invEx), posts.UpdateHead(SeqWP([Loop(inv, body)], posts))) by {
+        forall st: State | st in invEx ensures SeqSem([Loop(inv, body)], st, posts) {
+          SeqSemSingle'(Loop(inv, body), st, posts) by {
+            SemLoopLemma(inv, body, st, posts, invEx);
+          }
         }
       }
     }
@@ -269,4 +304,40 @@ module Omni {
       }
     }
   } 
+
+  lemma SemLoopWithCont(inv: Expr, body: Stmt, cont: seq<Stmt>, st: State, posts: Continuation, inv': iset<State>)
+    requires st in inv'
+    requires forall st': State :: 
+      st' in inv' ==> Sem(body, st', posts.UpdateHead(inv'))
+    ensures SeqSem([Loop(inv, body)] + cont, st, posts)
+  {
+    SemNest(Loop(inv, body), cont, st, posts) by {
+      SemLoopLemma(inv, body, st, posts.UpdateHead(SeqWP(cont, posts)), inv') by {
+        assert posts.UpdateHead(SeqWP(cont, posts)).UpdateHead(inv') == posts.UpdateHead(inv');
+      }
+    }
+  }
+  
+  lemma SemDepthLemma(s: Stmt, st: State, posts: Continuation)
+    requires Sem(s, st, posts)
+    
+
+  lemma InvSem(inv: Expr, body: Stmt, st: State, posts: Continuation, stmt: Stmt)
+    requires SeqSem([Assume(inv), body, Check(inv), stmt], st, posts)
+    requires st in inv.Sem()
+    ensures Sem(body, st, posts.UpdateHead(inv.Sem()))
+  {
+    SeqSemNest([Assume(inv)], [body, Check(inv), stmt], st, posts);
+    SeqSemSingle(Assume(inv), st, posts.UpdateHead(SeqWP([body, Check(inv), stmt], posts)));
+    assert SeqSem([body, Check(inv), stmt], st, posts);
+    SeqSemNest([body], [Check(inv), stmt], st, posts);
+    SeqSemSingle(body, st, posts.UpdateHead(SeqWP([Check(inv), stmt], posts)));
+    SemCons(body, st, posts.UpdateHead(SeqWP([Check(inv), stmt], posts)), posts.UpdateHead(inv.Sem())) by {
+      forall st': State | SeqSem([Check(inv), stmt], st', posts) ensures st' in inv.Sem() {
+        SeqSemNest([Check(inv)], [stmt], st', posts);
+        SeqSemSingle(Check(inv), st', posts.UpdateHead(SeqWP([stmt], posts)));
+      }
+    }
+  }
+    
 }

@@ -1,5 +1,49 @@
 module Defs { 
 
+  function Max(s: set<nat>): (m: nat)
+    requires s != {}
+    ensures m in s && forall z :: z in s ==> z <= m
+  {
+    var x :| x in s;
+    if s == {x} then
+      x
+    else
+      var s' := s - {x};
+      assert s == s' + {x};
+      var y := Max(s');
+      max(x, y)
+  } by method {
+    m :| m in s;
+    var r := s - {m};
+    while r != {}
+      invariant r < s
+      invariant m in s && forall z :: z in s - r ==> z <= m
+    {
+      var x :| x in r;
+      assert forall z :: z in s - (r - {x}) ==> z in s - r || z == x;
+      r := r - {x};
+      if m < x {
+        m := x;
+      }
+    }
+    assert s - {} == s;
+  }
+
+  function Max'(s: set<nat>): (m: nat)
+    ensures (s == {} || m in s) && forall z :: z in s ==> z <= m
+  {
+    if s == {} then 0 else Max(s)
+  }
+
+  lemma MaxLemma(s: set<Idx>, i: Idx, m: Idx)
+    requires i + m in s
+    ensures i <= Max(s) - m
+  {
+    if s != {} {
+      var x :| x in s;
+    }
+  }
+
   function Tail(n: nat, ss: State): State {
     if |ss| <= n then [] else ss[n..]
   }
@@ -20,6 +64,10 @@ module Defs {
   function max(x: nat, y: nat): nat {
     if x > y then x else y
   }
+  function min(x: nat, y: nat): nat {
+    if x > y then x else y
+  }
+
 
   ghost const AllStates: iset<State> := iset st: State | true
 
@@ -130,7 +178,7 @@ module Defs {
       case Choice(s0, s1) => 1 + s0.Size() + s1.Size()
       case NewScope(n, s) => 2 + s.Size()
       case Escape(l) => 2
-      case Loop(inv, body) => 1 + body.Size()
+      case Loop(inv, body) => 4 + body.Size()
     }
 
     function Depth(): Idx {
@@ -287,29 +335,47 @@ module Defs {
       vals + this
     }
 
+    function UpdateMapShift(i: Idx, vals: map<Idx, Value>): State  
+      ensures |UpdateMapShift(i, vals)| > i
+      ensures |UpdateMapShift(i, vals)| >= |this|
+      ensures forall v <- vals.Keys :: |UpdateMapShift(i, vals)| > v + i
+      ensures |UpdateMapShift(i, vals)| > Max'(vals.Keys) + i
+      ensures forall j: Idx :: j < |this| && (j < i || j - i !in vals.Keys) ==> UpdateMapShift(i, vals)[j] == this[j]
+      ensures forall j: Idx :: j in vals.Keys ==> UpdateMapShift(i, vals)[j + i] == vals[j]
+    {
+      var m := Max'(vals.Keys);
+      seq(max(i + m + 1, |this|), (j: nat) requires j < max(i + m + 1, |this|) => 
+        if j - i in vals.Keys then 
+          vals[j - i] 
+        else if j < |this| then
+          this[j]
+        else false
+      )
+    }
+
     function UpdateOrAdd(i: Idx, val: Value): State 
       ensures |UpdateOrAdd(i, val)| > i
       ensures |UpdateOrAdd(i, val)| >= |this|
       ensures forall j: Idx :: j < |this| ==> j != i ==> UpdateOrAdd(i, val)[j] == this[j]
       ensures UpdateOrAdd(i, val)[i] == val
     {
-      if |this| <= i then this + seq(i - |this|, i => false) + [val] else this[i := val]
+      UpdateMapShift(i, map[0 := val])
     }
 
     function MergeAt(i: Idx, vals: State): State 
-      ensures |MergeAt(i, vals)| > i + |vals|
+      ensures |MergeAt(i, vals)| >= i + |vals|
       ensures |MergeAt(i, vals)| >= |this|
       ensures forall j: Idx :: j < |this| ==> j < i || j >= i + |vals| ==> MergeAt(i, vals)[j] == this[j]
       ensures forall j: Idx :: i <= j < i + |vals| ==> MergeAt(i, vals)[j] == vals[j - i]
     {
-      seq(max(i + |vals| + 1, |this|), j requires j < max(i + |vals| + 1, |this|) => 
-        if j < |this| then 
-          if j < i || j >= i + |vals| then 
-            this[j]
-          else vals[j - i]
-        else if i <= j && j < i + |vals| then 
-          vals[j - i] 
-        else false)
+      var m := map j: Idx | j < |vals| :: vals[j];
+      ghost var m' := if m.Keys == {} then 0 else Max(m.Keys);
+      assert m' + 1 >= |vals| by {
+        if vals != [] {
+          assert |vals| - 1 in m.Keys;
+        }
+      }
+      UpdateMapShift(i, m)
     }
   }
 }
