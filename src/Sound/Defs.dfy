@@ -65,7 +65,7 @@ module Defs {
     if x > y then x else y
   }
   function min(x: nat, y: nat): nat {
-    if x > y then x else y
+    if x < y then x else y
   }
 
 

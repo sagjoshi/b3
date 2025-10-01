@@ -2,13 +2,13 @@ module Omni {
   import opened Defs
   export
     provides Defs, 
-      SeqLemma, SemNest, SemCons, SeqSemSingle, 
+      SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
       RefSem, SemSound, SeqRefSem, SeqSemSound, 
       SemLoopWithCont, InvSem
     reveals 
       Sem, SeqSem, WP, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
-      Continuation.UpdateHead, PreservesInv
+      Continuation.UpdateHead, PreservesInv, Continuation.Get
 
   /**
   
@@ -26,6 +26,12 @@ module Omni {
    */
 
   newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
+
+    function Get(i: nat): iset<State> 
+      requires i < |this|
+    {
+      this[i]
+    }
 
     ghost const head : iset<State> := this[0]
 
@@ -198,6 +204,14 @@ module Omni {
       SemCons(s, st, posts.UpdateHead(SeqWP(ss, posts)), posts.UpdateHead(post'));
     }
   }
+
+  // lemma SemUnNest(s: Stmt, ss: seq<Stmt>, st: State, posts: Continuation) 
+  //   requires SeqSem([s] + ss, st, posts)
+  //   ensures Sem(s, st, posts.UpdateHead(SeqWP(ss, posts)))
+  // {
+  //   // assert ([s] + ss)[0] == s;
+  //   // assert ([s] + ss)[1..] == ss; 
+  // }
 
   lemma SeqSemSingle(s: Stmt, st: State, posts: Continuation)
     requires SeqSem([s], st, posts)
