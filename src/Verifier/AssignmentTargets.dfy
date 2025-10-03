@@ -38,6 +38,7 @@ module AssignmentTargets {
     case Loop(_, body) =>
       var (vv, cc) := StmtTargets(body);
       (vv, cc - {Normal})
+    // 
     case LabeledStmt(lbl, body) =>
       var (vv, cc) := StmtTargets(body);
       if Abrupt(lbl) in cc then
