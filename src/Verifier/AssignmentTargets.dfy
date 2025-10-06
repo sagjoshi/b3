@@ -14,6 +14,23 @@ module AssignmentTargets {
     | Normal
     | Abrupt(lbl: Ast.Label)
 
+  /**
+  map<ContinuationPoint, set<Vars>>
+
+
+  scope ::
+    scope ::
+      (x++; exit 3) + skip  --> ({x}, {3, 0})
+    y++ 
+    exit 1
+  
+   */
+   /**
+
+   loop
+     (x++) + (y++; exit 1) + (z++; exit 2)
+    */
+
   // Return the set of free variables that are syntactically assigned anywhere in `stmt`,
   // except in those places where control flow is syntactically impossible.
   // To accomplish the latter, the function also returns the set of possible continuation
@@ -50,6 +67,12 @@ module AssignmentTargets {
     case Probe(_) => ({}, {Normal})
   }
 
+  /**
+  x++; --> [Normal -> {x}]
+
+  (y++; exit 1) + (z++; exit 2) --> [1 --> {y}; 2 --> {z}]
+   */
+
   function BlockTargets(stmts: seq<Ast.Stmt>): (set<Ast.Variable>, set<ContinuationPoint>) {
     if stmts == [] then
       ({}, {Normal})
@@ -57,7 +80,7 @@ module AssignmentTargets {
       var (vv, cc) := StmtTargets(stmts[0]);
       if Normal in cc then
         var (vv', cc') := BlockTargets(stmts[1..]);
-        (vv + vv', cc')
+        (vv + vv', (cc - {Normal}) + cc')
       else
         (vv, cc)
   }
