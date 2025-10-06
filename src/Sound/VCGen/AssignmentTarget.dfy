@@ -243,35 +243,8 @@ module AssignmentTarget {
         && Omni.PreservesInv(inv, body, posts);
       var m' := Process'(body);
       var inv' := inv * m'.ToEqsAll(st);
-      assert st in inv';
       forall st': State | st' in inv' ensures Omni.Sem(body, st', (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')) {
         Omni.SemCons(body, st', m'.ToEqs(st', posts.UpdateHead(inv)), (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')) by {
-          assert m'.ToEqs(st', posts.UpdateHead(inv)).Leq((m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')) by {
-            forall i: Idx | i < |posts| 
-              ensures m'.ToEqs(st', posts.UpdateHead(inv))[i] <= (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')[i]
-            {
-              forall st'': State | st'' in m'.ToEqs(st', posts.UpdateHead(inv))[i]
-                ensures st'' in (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')[i]
-              {
-                if i in m'.Keys  {
-                  if i == 0 {
-                    if 0 in m'.Keys {
-                      assert st'' in inv;
-                    }
-                  } else {
-                    assert forall j: Idx :: j < |st'| && !(j in m'.Get(i)) ==> st'[j] == st''[j];
-                    assert forall j: Idx :: j < |st| && !(j in m'.Get(0)) ==> st[j] == st'[j];
-                    forall j: Idx | j < |st| && !(j in (m'.Remove0()).Get(i))
-                      ensures st[j] == st''[j]
-                    {
-                      m'.GetLemma(i);
-                      assert m'.Get(0) <= m'.Remove0().Get(i);
-                    }
-                  }
-                }
-              }
-            }
-          }
           Process'Correct(body, st', m', posts.UpdateHead(inv)) by {
             assert Omni.PreservesInv(inv, body, posts);
           }
@@ -287,21 +260,12 @@ module AssignmentTarget {
               m'.Substract(n).ToEqs(st, posts).UpdateAndAdd(n)[i]
           {
             forall st': State | st' in m'.ToEqs(st.Update(vs), posts.UpdateAndAdd(n))[i] 
-              ensures st' in m'.Substract(n).ToEqs(st, posts).UpdateAndAdd(n)[i]
-            {
-              assert |st'| == |st| + n by {
-                calc {
-                  |st'|;
-                  == 
-                  |st.Update(vs)|;
-                }
-              }
+              ensures st' in m'.Substract(n).ToEqs(st, posts).UpdateAndAdd(n)[i] {
               assert st' in posts.UpdateAndAdd(n)[i];
               if i == 0 {
                 assert st'[n..] in m'.Substract(n).ToEqs(st, posts).head by {
                   assert forall i: Idx :: i < |st| + n && !(i in m'.Get(0)) ==> st.Update(vs)[i] == st'[i];
                   if 0 in m'.Keys {
-                    assert Pred(0) in m'.Keys;
                     assert 0 in m'.Substract(n).Keys by { m'.SubstractZero(n); }
                     assert st'[n..] in m'.Substract(n).ToEqs(st, posts).head by {
                       forall i: Idx | i < |st| && !(i in m'.Substract(n).Get(0)) 
@@ -318,18 +282,14 @@ module AssignmentTarget {
               } else {
                 assert st'[n..] in m'.Substract(n).ToEqs(st, posts)[i - 1] by {
                   if i in m'.Keys {
-                    assert |st| + n == |st'|;
                     assert st'[n..] in posts[i - 1] by {
                       calc {
                         st'[n..] in posts[i - 1];
-                        { assert |st'| >= n; }
-                        st' in UpdateSet(n, posts[i - 1]);
-                        { assert ([posts.head] + posts).Update(n)[i] == UpdateSet(n, posts[i - 1]); }
+                        { assert Tail(n, st') == st'[n..]; }
                         st' in posts.UpdateAndAdd(n)[i];
                       }
                     }
                     assert forall j: Idx :: j < |st| + n && !(j in m'.Get(i)) ==> st.Update(vs)[j] == st'[j];
-                    assert i - 1 <= Max'(m'.Keys) + 1;
                     assert (i - 1) in m'.Substract(n).Keys by {
                       m'.SubstractPlusOne(n, i - 1);
                     }
@@ -371,7 +331,6 @@ module AssignmentTarget {
             assert m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts))).Leq(
               m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))) by {
               if 0 in m'.Keys {
-                assert m == m'.SeqMerge(m'');
                 forall i: Idx | i < |posts| 
                   ensures m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts)))[i] <=
                         m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))[i]
@@ -381,7 +340,6 @@ module AssignmentTarget {
                   {
                     if i == 0 {
                       assert forall j: Idx :: j < |st| && !(j in m'.Get(0)) ==> st[j] == st'[j];
-                      assert Omni.SeqSem(ss[1..], st', posts);
                       SeqProcess'Correct(ss[1..], st', m'', posts);
                       Omni.SeqSemCons(ss[1..], st', m''.ToEqs(st', posts), m'.SeqMerge(m'').ToEqs(st, posts)) by {
                         forall i: Idx | i < |posts| 
@@ -390,25 +348,16 @@ module AssignmentTarget {
                           forall st'': State | st'' in m''.ToEqs(st', posts)[i]
                             ensures st'' in m'.SeqMerge(m'').ToEqs(st, posts)[i] {
                             if i in m''.Keys {
-                              assert i in m'.SeqMerge(m'').Keys by {
-                                m'.SeqMergeKeys(m'');
-                              }
+                              m'.SeqMergeKeys(m'');
                               forall j: Idx | j < |st| && !(j in m'.SeqMerge(m'').Get(i))
-                                ensures st[j] == st''[j]
-                              {
-                                assert |st| == |st'| == |st''|;
-                                assert j !in m''.Get(i) by {
-                                  if j in m''.Get(i) {
-                                    m'.SeqMergeGet2(m'', j, i);
-                                  }
+                                ensures st[j] == st''[j] {
+                                calc {
+                                  st[j];
+                                == { if j in m'.Get(0) { m'.SeqMergeGet1(m'', j, i); } }
+                                  st'[j];
+                                == { if j in m''.Get(i) { m'.SeqMergeGet2(m'', j, i); } }
+                                  st''[j];
                                 }
-                                assert st'[j] == st''[j];
-                                assert j !in m'.Get(0) by {
-                                  if j in m'.Get(0) {
-                                    m'.SeqMergeGet1(m'', j, i);
-                                  }
-                                }
-                                assert st[j] == st'[j];
                               }
                             } 
                           }
@@ -416,19 +365,13 @@ module AssignmentTarget {
                       }
                       assert Omni.SeqSem(ss[1..], st', m.ToEqs(st, posts));
                     } else {
-                      assert st' in m'.ToEqs(st, posts)[i];
                       assert st' in m'.SeqMerge(m'').ToEqs(st, posts)[i] by {
                         if i in m'.Keys {
-                          assert i in m'.SeqMerge(m'').Keys by {
-                            m'.SeqMergeKeys(m'');
-                          }
+                          m'.SeqMergeKeys(m'');
                           forall j: Idx | j < |st| && !(j in m'.SeqMerge(m'').Get(i))
-                            ensures st[j] == st'[j]
-                          {
-                            assert j !in m'.Get(i) by {
-                              if j in m'.Get(i) {
-                                m'.SeqMergeGet1'(m'', j, i);
-                              }
+                            ensures st[j] == st'[j] {
+                            if j in m'.Get(i) {
+                              m'.SeqMergeGet1'(m'', j, i);
                             }
                           }
                         }
@@ -439,12 +382,9 @@ module AssignmentTarget {
               }
             }
           }
+        }
       }
-      }
-    } else {
-
     }
-
   }
 
   function Process(stmt: Stmt): set<Idx> 
