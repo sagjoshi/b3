@@ -84,17 +84,6 @@ module AssignmentTarget {
       set i: Idx {:trigger i + n in s} | i <= Max'(s) - n && i + n in s 
     }
 
-    lemma InSubstractSet(s: set<Idx>, n: nat, i: Idx) 
-      requires i + n in s 
-      ensures i in SubstractSet(n, s)
-    {
-
-    }
-
-    predicate SubstractPred(i: Idx) {
-      i + 1 in Keys
-    }
-
     opaque function Substract(n: nat): VarsJumps 
     {
       var m: VarsJumps := map i: nat {: trigger} | 
@@ -106,18 +95,21 @@ module AssignmentTarget {
         m[0 := SubstractSet(n, this[0])]
       else m
     }
+
     lemma SubstractPlusOne(n: nat, i: Idx)
       requires i + 1 in Keys
       ensures i in Substract(n).Keys
     {
       reveal Substract(n);
     }
+
     lemma SubstractZero(n: nat)
       requires 0 in Keys
       ensures 0 in Substract(n).Keys
     {
       reveal Substract(n);
     }
+
     lemma SubstractGetZero(n: nat, i: Idx)
       requires i + n in Get(0)
       requires 0 in Keys
@@ -130,14 +122,13 @@ module AssignmentTarget {
     lemma SubstractGet(n: nat, i: Idx, k: nat)
       requires i + n in Get(k)
       requires k > 0
-      // requires i + 1 in Keys
       ensures i in Substract(n).Get(k - 1) 
     {
       reveal Substract(n);
     }
+
     lemma SubstracOfPlusOne(n: nat, i: Idx)
       requires i + 1 in Keys
-      // requires i != 0
       requires i in Substract(n).Keys
       ensures Substract(n)[i] >= SubstractSet(n, this[i + 1])
     {
@@ -230,8 +221,6 @@ module AssignmentTarget {
       else v0
   }
 
-
-  // verification-time-limit 40
   lemma Process'Correct(stmt: Stmt, st: State, m: VarsJumps, posts: Omni.Continuation) 
     requires Process'(stmt) == m
     ensures forall v <- m.Values, s <- v :: s < stmt.Depth()
