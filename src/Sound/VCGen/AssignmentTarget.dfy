@@ -6,11 +6,6 @@ module AssignmentTarget {
     provides Defs, Omni, Process, Correct
     reveals PairToSet, EqsTo
   
-  predicate ShiftedIn(s: set<Idx>, n: nat, i: Idx) {
-    i + n in s
-  }
-  
-
   newtype VarsJumps = map<nat, set<Idx>> {
 
     ghost function Get(n: nat): iset<Idx> {
