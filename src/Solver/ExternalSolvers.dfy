@@ -10,7 +10,7 @@ module ExternalSolvers {
 
   datatype SolverSelection = Z3 | CVC5
 
-  method StartSmtSolverProcess(which: SolverSelection) returns (r: Result<OSProcess, string>)
+  method StartSmtSolverProcess(which: SolverSelection, printLog: bool) returns (r: Result<OSProcess, string>)
     ensures r.Success? ==> var process := r.value; process.Valid() && fresh(process)
   {
     var process;
@@ -22,20 +22,29 @@ module ExternalSolvers {
     }
 
     // Initialize SMT solver with some SMT-LIB2 commands
-    var _ :- Send(process, "(set-option :produce-models true)");
-    var _ :- Send(process, "(set-logic ALL)");
+    var _ :- Send(process, "(set-logic ALL)", printLog);
+    var _ :- Send(process, "(set-option :produce-models true)", printLog);
+
+    match which {
+      case Z3 =>
+        var _ :- Send(process, "(set-option :auto_config false)", printLog);
+        var _ :- Send(process, "(set-option :smt.mbqi false)", printLog);
+      case CVC5 =>
+    }
 
     return Success(process);
   }
 
-  method Send(p: OSProcess, cmd: string) returns (r: Result<string, string>)
-    requires p.Valid()
-    modifies p
-    ensures r.Success? && cmd != "(exit)" ==> p.Valid()
+  method Send(process: OSProcess, cmd: string, printLog: bool) returns (r: Result<string, string>)
+    requires process.Valid()
+    modifies process
+    ensures r.Success? && cmd != "(exit)" ==> process.Valid()
   {
-    Log(p, ToProcess, cmd);
+    if printLog {
+      print "smt>> ", cmd, "\n";
+    }
 
-    var _ := p.Send(cmd);
+    var _ := process.Send(cmd);
 
     // For simple commands like (push), (pop), there is no response from the SMT solver
     if
@@ -54,21 +63,21 @@ module ExternalSolvers {
 
     // For get-model, read until we get a balanced set of parentheses
     if cmd == "(get-model)" {
-      r := ReadBalancedParentheses(p);
+      r := ReadBalancedParentheses(process);
       return;
     }
 
     // In all other cases, including the command check-sat, the response is a single line
-    var line :- p.ReadLine();
+    var line :- process.ReadLine();
     match line
     case None => return Success("");
     case Some(text) => return Success(text);
   }
 
-  method ReadBalancedParentheses(p: OSProcess) returns (r: Result<string, string>)
-    requires p.Valid()
-    modifies p
-    ensures r.Success? ==> p.Valid()
+  method ReadBalancedParentheses(process: OSProcess) returns (r: Result<string, string>)
+    requires process.Valid()
+    modifies process
+    ensures r.Success? ==> process.Valid()
   {
     // Read until we get a balanced set of parentheses
     var response := "";
@@ -83,7 +92,7 @@ module ExternalSolvers {
       invariant |response| <= lengthOfEntireResponse
       decreases lengthOfEntireResponse - |response|
     {
-      var line :- p.ReadLine();
+      var line :- process.ReadLine();
       match line
       case None =>
         // at end of file; okay, so this is unexpected, but let's just return what we've got so far
@@ -117,9 +126,9 @@ module ExternalSolvers {
 
   datatype Direction = ToProcess | FromProcess
 
-  method Log(p: OSProcess, direction: Direction, msg: string) {
+  method Log(process: OSProcess, direction: Direction, msg: string) {
     if DEBUG {
-      print p.ExecutableName();
+      print process.ExecutableName();
       match direction {
         case ToProcess => print " << ";
         case FromProcess => print " >> ";

@@ -8,14 +8,14 @@ module TestExternalSolvers {
 
   @Test
   method DemonstrateExternalSolvers() {
-    var r: Result<OSProcesses.OSProcess, string> := ES.StartSmtSolverProcess(ES.Z3);
+    var r: Result<OSProcesses.OSProcess, string> := ES.StartSmtSolverProcess(ES.Z3, false);
     if r.Failure? {
       print "Error creating z3 process: ", r.error, "\n";
       return;
     }
     Demonstrate(r.value);
 
-    r := ES.StartSmtSolverProcess(ES.CVC5);
+    r := ES.StartSmtSolverProcess(ES.CVC5, false);
     if r.Failure? {
       print "Error creating cvc5 process: ", r.error, "\n";
       return;

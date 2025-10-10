@@ -558,8 +558,8 @@ module RSolvers {
     ensures r.Success? ==> var smtEngine := r.value; smtEngine.Valid() && fresh(smtEngine.Repr)
   {
     var which := if "cvc5" in options then ExternalSolvers.CVC5 else ExternalSolvers.Z3;
-    var process :- ExternalSolvers.StartSmtSolverProcess(which);
-    var solver := new Smt.SolverEngine(process, "solver-log" in options);
+    var process :- ExternalSolvers.StartSmtSolverProcess(which, "solver-log" in options);
+    var solver := new Smt.SolverEngine(process, "solver-log" in options || "solver-log-no-options" in options);
     var state := new Solvers.SolverState(solver);
     var smtEngine := new REngine.New(state, axiomMap, options);
     return Success(smtEngine);

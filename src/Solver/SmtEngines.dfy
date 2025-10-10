@@ -89,10 +89,6 @@ module SmtEngines {
         && (cmd == CMD_POP && old(CommandStacks.DoubleCons?) ==> CommandStacks == PopCommandStack(old(CommandStacks)))
         && (cmd != CMD_PUSH && cmd != CMD_POP ==> CommandStacks == AddCommand(old(CommandStacks), cmd))
     {
-      if printLog {
-        print "smt>> ", cmd, "\n";
-      }
-
       if cmd == CMD_PUSH {
         CommandStacks := PushCommandStack(CommandStacks);
       } else if cmd == CMD_POP && CommandStacks.DoubleCons? {
@@ -101,7 +97,7 @@ module SmtEngines {
         CommandStacks := AddCommand(CommandStacks, cmd);
       }
 
-      r := ExternalSolvers.Send(process, cmd);
+      r := ExternalSolvers.Send(process, cmd, printLog);
     }
 
     ghost predicate Valid()
