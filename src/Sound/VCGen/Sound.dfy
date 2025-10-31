@@ -70,63 +70,72 @@ module VCGenOmni {
         }
       }
     case Call(proc, args) =>
-      var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
-      var Post := SeqSubstitute(proc.Post, args.ToExpr());
-      VCs := seq(|Pre|, (i: nat) requires i < |Pre| => 
-        SeqExprDepthLemma(Pre, Pre[i]);
-        context_in.MkEntailment(Pre[i]));
-      var vNew, context' := context_in.AddVarSet(args.OutArgs()) by {
-        args.OutArgsDepthLemma();
-      }
-      context := context'.AddSeq(Post) by {
-        forall post <- Post { SeqExprDepthLemma(Post, post); }
-      }
-      if (forall e <- VCs :: e.Holds()) {
-        forall st: State | context_in.IsSatisfiedOn(st)
-          ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
-          forall v <- args.OutArgs() 
-            ensures v < |context_in.AdjustState(st)| {
-            args.OutArgsDepthLemma();
-          }
-          forall e <- Pre 
-            ensures e.IsDefinedOn(|context_in.AdjustState(st)|) 
-            ensures context_in.AdjustState(st).Eval(e) 
-          {
-            SeqExprDepthLemma(Pre, e);
-            assert context_in.MkEntailment(e).Holds() by {
-              context_in.MkEntailmentSeqLemma(Pre, e) by {
-                forall e <- Pre { SeqExprDepthLemma(Pre, e); }
-              }
-            }
-            EvalConjLemma(context_in.ctx, st);
-            context_in.AdjustStateSubstituteLemma(st, e);
-          }
-          forall st': State | 
-            && st' in context_in.AdjustState(st).EqExcept(args.OutArgs())
-            && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e))
-            ensures st' in context.AdjustedModels {
-            var st'' := st.UpdateMapShift(vNew, map i: Idx | i in args.OutArgs() :: st'[i]);
-            assert st' == context.AdjustState(st'') by {
-              assert (map i: Idx | i in args.OutArgs() :: st'[i]).Keys == args.OutArgs();
-            }
-            assert context.IsSatisfiedOn(st'') by {
-              assert forall i <- context.incarnation :: i < |st''|;
-              forall e <- context.ctx
-                ensures e.IsDefinedOn(|st''|)
-                ensures st''.Eval(e) {
-                if e in context_in.ctx {
-                  e.EvalDepthLemma(st, st'');
-                } else {
-                  assert e in context'.SeqSubstitute(Post);
-                  var e' := context'.GetSeqSubstituteLemma(Post, e);
-                  context'.SubstituteIsDefinedOnLemma(e', |st''|);
-                  context'.AdjustStateSubstituteLemma(st'', e');
-                }
-              }
-            }
-          }
-        }
-      }
+      var context', seqArgs := context_in.astractInArgs(args);
+      var contextPre := context'.mkPreContext(seqArgs);
+      VCs := seq(|proc.Pre|, (i: nat) requires i < |proc.Pre| => 
+        SeqExprDepthLemma(proc.Pre, proc.Pre[i]);
+        contextPre.MkEntailment(proc.Pre[i]));
+      context := context'.mkPostContext(proc, seqArgs, args);
+      // if (forall e <- VCs :: e.Holds()) {
+
+      // }
+      // var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
+      // var Post := SeqSubstitute(proc.Post, args.ToExpr());
+      // VCs := seq(|Pre|, (i: nat) requires i < |Pre| => 
+      //   SeqExprDepthLemma(Pre, Pre[i]);
+      //   context_in.MkEntailment(Pre[i]));
+      // var vNew, context' := context_in.AddVarSet(args.OutArgs()) by {
+      //   args.OutArgsDepthLemma();
+      // }
+      // context := context'.AddSeq(Post) by {
+      //   forall post <- Post { SeqExprDepthLemma(Post, post); }
+      // }
+      // if (forall e <- VCs :: e.Holds()) {
+      //   forall st: State | context_in.IsSatisfiedOn(st)
+      //     ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
+      //     forall v <- args.OutArgs() 
+      //       ensures v < |context_in.AdjustState(st)| {
+      //       args.OutArgsDepthLemma();
+      //     }
+      //     forall e <- Pre 
+      //       ensures e.IsDefinedOn(|context_in.AdjustState(st)|) 
+      //       ensures context_in.AdjustState(st).Eval(e) 
+      //     {
+      //       SeqExprDepthLemma(Pre, e);
+      //       assert context_in.MkEntailment(e).Holds() by {
+      //         context_in.MkEntailmentSeqLemma(Pre, e) by {
+      //           forall e <- Pre { SeqExprDepthLemma(Pre, e); }
+      //         }
+      //       }
+      //       EvalConjLemma(context_in.ctx, st);
+      //       context_in.AdjustStateSubstituteLemma(st, e);
+      //     }
+      //     forall st': State | 
+      //       && st' in context_in.AdjustState(st).EqExcept(args.OutArgs())
+      //       && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e))
+      //       ensures st' in context.AdjustedModels {
+      //       var st'' := st.UpdateMapShift(vNew, map i: Idx | i in args.OutArgs() :: st'[i]);
+      //       assert st' == context.AdjustState(st'') by {
+      //         assert (map i: Idx | i in args.OutArgs() :: st'[i]).Keys == args.OutArgs();
+      //       }
+      //       assert context.IsSatisfiedOn(st'') by {
+      //         assert forall i <- context.incarnation :: i < |st''|;
+      //         forall e <- context.ctx
+      //           ensures e.IsDefinedOn(|st''|)
+      //           ensures st''.Eval(e) {
+      //           if e in context_in.ctx {
+      //             e.EvalDepthLemma(st, st'');
+      //           } else {
+      //             assert e in context'.SeqSubstitute(Post);
+      //             var e' := context'.GetSeqSubstituteLemma(Post, e);
+      //             context'.SubstituteIsDefinedOnLemma(e', |st''|);
+      //             context'.AdjustStateSubstituteLemma(st'', e');
+      //           }
+      //         }
+      //       }
+      //     }
+      //   }
+      // }
   }
 
   ghost function BlockWPSeq(bcont: Block.Continuation, post: iset<State>) : Omni.Continuation

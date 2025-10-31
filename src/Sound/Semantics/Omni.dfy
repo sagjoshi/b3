@@ -106,23 +106,23 @@ module Omni {
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in post
     case Call(proc, args) =>
-      var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
-      var Post := SeqSubstitute(proc.Post, args.ToExpr());
-      var outVars := args.OutArgs();
-      && (forall v <- outVars :: v < |st|)
-      && (forall e <- Pre :: e.IsDefinedOn(|st|) && st.Eval(e))
-      && forall st': State :: (
-        && st' in st.EqExcept(outVars)
-        && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e)))
-          ==> st' in post
-    // && args.IsDefinedOn(|st|)
-    // && var callSt := args.EvalOn(st);
-    //   && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
-    //   && forall st': State :: (
-    //     && st' in st.EqExcept(args.OutArgs())
-    //     && var callSt' := args.EvalOn(st');
-    //       (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)))
-    //         ==> st' in post
+      // var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
+      // var Post := SeqSubstitute(proc.Post, args.ToExpr());
+      // var outVars := args.OutArgs();
+      // && (forall v <- outVars :: v < |st|)
+      // && (forall e <- Pre :: e.IsDefinedOn(|st|) && st.Eval(e))
+      // && forall st': State :: (
+      //   && st' in st.EqExcept(outVars)
+      //   && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e)))
+      //     ==> st' in post
+      && args.IsDefinedOn(|st|)
+      && var callSt := args.EvalOn(st);
+        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
+        && forall st': State :: (
+          && st' in st.EqExcept(args.OutArgs())
+          && var callSt' := args.EvalOn(st');
+            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)))
+              ==> st' in post
   }
 
   ghost predicate PreservesInv(inv: iset<State>, body: Stmt, posts: Continuation)

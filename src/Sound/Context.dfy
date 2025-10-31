@@ -149,6 +149,44 @@ module Context {
       this.(ctx := ctx + SeqSubstitute(ss))
     }
 
+    method astractInArgs(args: CallArguments) returns (context: Context, incrPre: seq<nat>)
+      requires args.IsDefinedOn(|incarnation|)
+      // ensures forall v <- seqArgs :: v < |context.incarnation|
+    {
+      context := this;
+      incrPre := [];
+      for i := 0 to |args|
+      {
+        match args[i]
+        case InArgument(e) => 
+          var v := FreshIdx();
+          args.IsDefinedOnIn(args[i], |incarnation|);
+          context := Context(context.ctx + [Eq(BVar(v), Substitute(e))], context.incarnation);
+          incrPre := incrPre + [v];
+        case _ => 
+          args.IsDefinedOnIn(args[i], |incarnation|);
+          incrPre := incrPre + [incarnation[args[i].v]];
+      }
+    }
+
+    function ReplaceIncr(incr: seq<nat>): Context
+    {
+      Context(ctx, incr)
+    }
+
+    method mkPostContext(proc: Procedure, seqArgs: seq<Idx>, args: CallArguments) returns (context: Context)
+      requires forall v <- seqArgs :: v < |incarnation|
+      requires args.IsDefinedOn(|incarnation|)
+      requires Call(proc, args).ValidCalls()
+      requires |args| == |seqArgs|
+    {
+      var vNew, context' := AddVarSet(args.OutArgs()) by {
+        args.OutArgsDepthLemma();
+      }
+      var contextPost := context'.mkPreContext(seqArgs);
+      context := context'.(ctx := context'.ctx + contextPost.SeqSubstitute(proc.Post));
+    }
+
     method AddEq(v: Idx, e: Expr) returns (ghost vNew: Idx, context: Context)
       requires v < |incarnation|
       requires e.IsDefinedOn(|incarnation|)

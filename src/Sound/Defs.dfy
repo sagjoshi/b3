@@ -271,11 +271,24 @@ module Defs {
       Depth() <= d
     }
 
+    lemma IsDefinedOnIn(arg: CallArgument, d: Idx)
+      requires arg in this
+      requires IsDefinedOn(d)
+      ensures arg.IsDefinedOn(d)
+    { 
+      if this != [] {
+        if arg != this[0] {
+          this[1..].IsDefinedOnIn(arg, d);
+        }
+      }
+    }
+      
     function EvalOn(s: State): State 
       requires IsDefinedOn(|s|)
     {
       if this == [] then [] else [this[0].EvalOn(s)] + this[1..].EvalOn(s)
     }
+
   }
 
   class Procedure {
