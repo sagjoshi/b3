@@ -88,16 +88,65 @@ module Context {
       SubstituteIdx(e, 0)
     }
 
-    function MkEntailment(e: Expr): Expr
+    function  MkEntailment(e: Expr): Expr
       requires e.IsDefinedOn(|incarnation|)
     {
       Implies(Conj(ctx), Substitute(e))
+    }
+
+    function MkEntailmentSeq(ss: seq<Expr>): seq<Expr>
+      requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
+    {
+      seq(|ss|, (i: nat) requires i < |ss| => MkEntailment(ss[i]))
+    }
+
+    function Index(ss: seq<Expr>, e: Expr): nat
+      requires e in ss
+      ensures Index(ss, e) < |ss|
+      ensures ss[Index(ss, e)] == e
+    {
+      if |ss| == 1 then 
+        0
+      else
+        if ss[0] == e then
+          0
+        else
+          Index(ss[1..], e) + 1
+    }
+
+    lemma MkEntailmentSeqLemma(ss: seq<Expr>, e: Expr)
+      requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
+      requires e in ss
+      ensures MkEntailment(e) in MkEntailmentSeq(ss)
+    {
+      assert MkEntailment(e) == MkEntailmentSeq(ss)[Index(ss, e)];
     }
 
     function Add(e: Expr): Context
       requires e.IsDefinedOn(|incarnation|)
     {
       this.(ctx := ctx + [Substitute(e)])
+    }
+
+    function SeqSubstitute(ss: seq<Expr>): seq<Expr>
+      requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
+    {
+      seq(|ss|, (i: nat) requires i < |ss| => Substitute(ss[i]))
+    }
+
+    lemma GetSeqSubstituteLemma(ss: seq<Expr>, e: Expr) returns (e': Expr) 
+      requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
+      requires e in SeqSubstitute(ss)
+      ensures e' in ss
+      ensures Substitute(e') == e
+    {
+      e' := ss[Index(SeqSubstitute(ss), e)];
+    }
+
+    function AddSeq(ss: seq<Expr>): Context
+      requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
+    {
+      this.(ctx := ctx + SeqSubstitute(ss))
     }
 
     method AddEq(v: Idx, e: Expr) returns (ghost vNew: Idx, context: Context)

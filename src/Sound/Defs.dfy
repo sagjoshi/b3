@@ -1,5 +1,7 @@
 module Defs { 
 
+  import opened Std.Wrappers
+
   function Max(s: set<nat>): (m: nat)
     requires s != {}
     ensures m in s && forall z :: z in s ==> z <= m
@@ -142,7 +144,50 @@ module Defs {
         }
       case _ =>
     } 
+
+    function SubstituteIdx(args: seq<Expr>, i: Idx): Expr 
+      requires IsDefinedOn(|args| + i)
+    {
+      match this
+      case BVar(v) =>
+        if v >= i then
+          args[v - i]
+        else this
+      case Forall(v, body) =>
+        Forall(v, body.SubstituteIdx(args, i + 1))
+      case Implies(e0, e1) =>
+        Implies(e0.SubstituteIdx(args, i), e1.SubstituteIdx(args, i))
+      case Not(e) =>
+        Not(e.SubstituteIdx(args, i))
+      case And(e0, e1) =>
+        And(e0.SubstituteIdx(args, i), e1.SubstituteIdx(args, i))
+      case Or(e0, e1) =>
+        Or(e0.SubstituteIdx(args, i), e1.SubstituteIdx(args, i))
+      case BConst(bvalue) =>
+        this
+    }
+
+    function Substitute(args: seq<Expr>): Expr 
+      requires IsDefinedOn(|args|)
+    {
+      SubstituteIdx(args, 0)
+    }
   }
+
+  function SeqSubstitute(ss: seq<Expr>, args: seq<Expr>): seq<Expr> 
+    requires forall e <- ss :: e.IsDefinedOn(|args|)
+  {
+    if ss == [] then [] else [ss[0].Substitute(args)] + SeqSubstitute(ss[1..], args)
+  }
+
+  function SeqExprDepth(ss: seq<Expr>): nat {
+    if ss == [] then 0 else max(ss[0].Depth(), SeqExprDepth(ss[1..]))
+  }
+
+  lemma SeqExprDepthLemma(ss: seq<Expr>, s: Expr) 
+    requires s in ss
+    ensures s.Depth() <= SeqExprDepth(ss)
+  {  }
 
   function Eq(e1: Expr, e2: Expr): Expr {
     And(Implies(e1, e2), Implies(e2, e1))
@@ -158,17 +203,113 @@ module Defs {
     requires s.Eval(e1) == s.Eval(e2)
     ensures s.Eval(Eq(e1, e2))
   {  }
+
+  datatype ParameterMode = In | InOut | Out
+
+  datatype Parameter = Parameter(name: string, mode: ParameterMode)
+  
+  datatype CallArgument =
+    | InArgument(e: Expr)
+    | InOutArgument(v: Idx) 
+    | OutArgument(v: Idx)
+  {
+    function ToExpr(): Expr {
+      match this
+      case InArgument(e) => e
+      case InOutArgument(v) => BVar(v)
+      case OutArgument(v) => BVar(v)
+    }
+
+    function OutArg(): set<Idx> {
+      match this
+      case InArgument(_) => {}
+      case InOutArgument(v) => {v}
+      case OutArgument(v) => {v}
+    }
+
+    function Depth(): Idx {
+      match this
+      case InArgument(e) => e.Depth()
+      case InOutArgument(v) => v + 1
+      case OutArgument(v) => v + 1
+    }
+
+    predicate IsDefinedOn(d: Idx) {
+      Depth() <= d
+    }
+
+    function EvalOn(s: State): Value 
+      requires IsDefinedOn(|s|)
+    {
+      match this
+      case InArgument(e) => s.Eval(e)
+      case InOutArgument(v) => s[v]
+      case OutArgument(v) => s[v]
+    }
+  }
+
+  newtype CallArguments = seq<CallArgument> {
+    function ToExpr(): seq<Expr> 
+      ensures |ToExpr()| == |this|
+    {
+      if this == [] then [] else [this[0].ToExpr()] + this[1..].ToExpr()
+    }
+
+    function OutArgs(): set<Idx> {
+      if this == [] then {} else this[0].OutArg() + this[1..].OutArgs()
+    }
+
+    function Depth(): Idx {
+      if this == [] then 0 else max(this[0].Depth(), this[1..].Depth())
+    }
+
+    lemma OutArgsDepthLemma()
+      ensures forall v <- OutArgs() :: v < Depth()
+    { }
+
+    predicate IsDefinedOn(d: Idx) {
+      Depth() <= d
+    }
+
+    function EvalOn(s: State): State 
+      requires IsDefinedOn(|s|)
+    {
+      if this == [] then [] else [this[0].EvalOn(s)] + this[1..].EvalOn(s)
+    }
+  }
+
+  class Procedure {
+    const Name: string
+    const Parameters: seq<Parameter>
+    const Pre: seq<Expr>
+    const Post: seq<Expr>
+    var Body: Option<Stmt>
+  }
     
-  datatype Stmt =
+  datatype Stmt_ =
     | Check(e: Expr)
     | Assume(e: Expr)
-    | Seq(ss: seq<Stmt>)
+    | Seq(ss: seq<Stmt_>)
     | Assign(lhs: Idx, rhs: Expr)
-    | NewScope(n: nat, s: Stmt)
+    | NewScope(n: nat, s: Stmt_)
     | Escape(l: nat)
-    | Choice(0: Stmt, 1: Stmt)
-    | Loop(inv: Expr, body: Stmt)
+    | Choice(0: Stmt_, 1: Stmt_)
+    | Loop(inv: Expr, body: Stmt_)
+    | Call(proc: Procedure, args: CallArguments)
   {
+    predicate ValidCalls() {
+      match this
+      case Call(proc, args) =>
+        && (forall e <- proc.Pre :: e.IsDefinedOn(|args|))
+        && (forall e <- proc.Post :: e.IsDefinedOn(|args|))
+      case Seq(ss) => forall s <- ss :: s.ValidCalls()
+      case Choice(s0, s1) => s0.ValidCalls() && s1.ValidCalls()
+      case NewScope(n, s) => s.ValidCalls()
+      case Loop(inv, body) => body.ValidCalls()
+      case _ =>
+        true
+    }
+
     function Size(): nat {
       match this
       case Check(_) => 1
@@ -179,9 +320,12 @@ module Defs {
       case NewScope(n, s) => 2 + s.Size()
       case Escape(l) => 2
       case Loop(inv, body) => 4 + body.Size()
+      case Call(proc, args) => 1
     }
 
-    function Depth(): Idx {
+    function Depth(): Idx 
+      requires ValidCalls()
+    {
       match this
       case Check(e) => e.Depth()
       case Assume(e) => e.Depth()
@@ -191,6 +335,10 @@ module Defs {
       case NewScope(n, s) => if s.Depth() <= n then 0 else s.Depth() - n
       case Escape(l) => 0
       case Loop(inv, body) => max(inv.Depth(), body.Depth())
+      case Call(proc, args) => 
+        var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
+        var Post := SeqSubstitute(proc.Post, args.ToExpr());
+        max(args.Depth(), max(SeqExprDepth(Pre), SeqExprDepth(Post)))
     }
 
     function JumpDepth() : Idx {
@@ -203,9 +351,12 @@ module Defs {
       case NewScope(n, s) => if s.JumpDepth() == 0 then 0 else s.JumpDepth() - 1
       case Escape(l) => l
       case Loop(inv, body) => body.JumpDepth()
+      case Call(proc, args) => 0
     }
 
-    predicate IsDefinedOn(d: Idx) {
+    predicate IsDefinedOn(d: Idx) 
+      requires ValidCalls()
+    {
       Depth() <= d
     }
 
@@ -214,6 +365,7 @@ module Defs {
     }
 
     lemma IsDefinedOnTransitivity(d1: Idx, d2: Idx)
+      requires ValidCalls()
       requires d1 <= d2
       ensures IsDefinedOn(d1) ==> IsDefinedOn(d2)
     {  }
@@ -223,12 +375,15 @@ module Defs {
       case Assign(_, _) => true
       case Check(_) => true
       case Assume(_) => true
+      case Call(_, _) => true
       case _ => false
     }
   }
 
+  type Stmt = s: Stmt_ | s.ValidCalls() witness Seq([])
 
-  function SeqSize(ss: seq<Stmt>): nat {
+
+  function SeqSize(ss: seq<Stmt_>): nat {
     if ss == [] then 0 else ss[0].Size() + SeqSize(ss[1..])
   }
 
@@ -241,7 +396,7 @@ module Defs {
     if ss == [] then 0 else max(ss[0].Depth(), SeqDepth(ss[1..]))
   }
 
-  function SeqJumpDepth(ss: seq<Stmt>): nat {
+  function SeqJumpDepth(ss: seq<Stmt_>): nat {
     if ss == [] then 0 else max(ss[0].JumpDepth(), SeqJumpDepth(ss[1..]))
   }
 
@@ -376,6 +531,13 @@ module Defs {
         }
       }
       UpdateMapShift(i, m)
+    }
+
+    ghost function EqExcept(vars: set<Idx>) : iset<State>
+    {
+      iset st': State | 
+        && |st'| == |this|
+        && forall i: Idx :: i < |this| && i !in vars ==> st'[i] == this[i]
     }
   }
 }

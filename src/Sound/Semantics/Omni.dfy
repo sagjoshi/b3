@@ -25,7 +25,7 @@ module Omni {
   cc
    */
 
-  newtype Continuation = s : seq<iset<State>> | |s| > 0 witness [iset{}] {
+  newtype Continuation = s: seq<iset<State>> | |s| > 0 witness [iset{}] {
 
     function Get(i: nat): iset<State> 
       requires i < |this|
@@ -89,7 +89,7 @@ module Omni {
     wp (exit(1)) [[Upd(Upd(post)[1/B])[2/A]], Upd(Upd(post)[1/B]), Upd2(post)] st ==
     st in Upd(Upd(post)[1/B])
 
-   */
+   */ 
 
   ghost predicate SemSingle(s: Stmt, st: State, post: iset<State>) 
     requires s.Single()
@@ -105,6 +105,24 @@ module Omni {
       && x < |st|
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in post
+    case Call(proc, args) =>
+      var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
+      var Post := SeqSubstitute(proc.Post, args.ToExpr());
+      var outVars := args.OutArgs();
+      && (forall v <- outVars :: v < |st|)
+      && (forall e <- Pre :: e.IsDefinedOn(|st|) && st.Eval(e))
+      && forall st': State :: (
+        && st' in st.EqExcept(outVars)
+        && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e)))
+          ==> st' in post
+    // && args.IsDefinedOn(|st|)
+    // && var callSt := args.EvalOn(st);
+    //   && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
+    //   && forall st': State :: (
+    //     && st' in st.EqExcept(args.OutArgs())
+    //     && var callSt' := args.EvalOn(st');
+    //       (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)))
+    //         ==> st' in post
   }
 
   ghost predicate PreservesInv(inv: iset<State>, body: Stmt, posts: Continuation)
@@ -140,15 +158,21 @@ module Omni {
       && x < |st|
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in posts.head
+    case Call(proc, args) => 
+      && args.IsDefinedOn(|st|)
+      && var callSt := args.EvalOn(st);
+        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
+        && forall st': State :: (
+          && st' in st.EqExcept(args.OutArgs())
+          && var callSt' := args.EvalOn(st');
+            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)))
+              ==> st' in posts.head
     case Seq(ss)        => SeqRefSem(ss, st, posts)
     case Choice(s0, s1) => RefSem(s0, st, posts) && RefSem(s1, st, posts)
     case NewScope(n, s) => 
       forall vs: State :: |vs| == n ==> RefSem(s, st.Update(vs), posts.UpdateAndAdd(n))
     case Escape(l)      => |posts| > l && st in posts[l]
-    case Loop(inv, body) => 
-      // && inv.IsDefinedOn(|st|)
-      // && st.Eval(inv)
-      && RefSem(Seq([body, Loop(inv, body)]), st, posts)
+    case Loop(inv, body) => RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
 
   greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) {
@@ -353,5 +377,4 @@ module Omni {
       }
     }
   }
-    
 }
