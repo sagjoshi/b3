@@ -206,20 +206,13 @@ module Defs {
 
   datatype ParameterMode = In | InOut | Out
 
-  datatype Parameter = Parameter(name: string, mode: ParameterMode)
+  datatype Parameter = Parameter(mode: ParameterMode)
   
   datatype CallArgument =
     | InArgument(v: Idx)
     | InOutArgument(v: Idx) 
     | OutArgument(v: Idx)
   {
-    function ToExpr(): Expr {
-      match this
-      case InArgument(v) => BVar(v)
-      case InOutArgument(v) => BVar(v)
-      case OutArgument(v) => BVar(v)
-    }
-
     function OutArg(): set<Idx> {
       match this
       case InArgument(v) => {}
@@ -253,22 +246,9 @@ module Defs {
       case OutArgument(v) => s[v]
     }
 
-    function GetVar(): Idx 
-    {
-      match this
-      case InArgument(v) => v
-      case InOutArgument(v) => v
-      case OutArgument(v) => v
-    }
   }
 
   newtype CallArguments = seq<CallArgument> {
-    function ToExpr(): seq<Expr> 
-      ensures |ToExpr()| == |this|
-    {
-      if this == [] then [] else [this[0].ToExpr()] + this[1..].ToExpr()
-    }
-
     function OutArgs(): set<Idx> {
       if this == [] then {} else this[0].OutArg() + this[1..].OutArgs()
     }
@@ -279,7 +259,7 @@ module Defs {
       if this == [] then 
         [] else 
       if this[0].IsInOutArg() then 
-        [this[0].GetVar()] + this[1..].InOutArgs() 
+        [this[0].v] + this[1..].InOutArgs() 
       else this[1..].InOutArgs()
     }
 
@@ -334,11 +314,6 @@ module Defs {
       )
     }
 
-    function GetVars(): seq<Idx> 
-    {
-      if this == [] then [] else [this[0].GetVar()] + this[1..].GetVars()
-    }
-
     function NumInOutArgs(): nat {
       if this == [] then 
         0 
@@ -367,7 +342,82 @@ module Defs {
     const Parameters: seq<Parameter>
     const Pre: seq<Expr>
     const Post: seq<Expr>
-    var Body: Option<Stmt>
+    const Body: Option<Stmt>
+
+    ghost predicate InPreSet(st: State) 
+    {
+      && |Parameters| <= |st|
+      && forall e <- Pre :: e.IsDefinedOn(|st|) && st.Eval(e)
+    }
+    ghost function PreSet(): iset<State> {
+      iset st: State | InPreSet(st)
+    }
+
+    function NumInOutArgs'(Parameters: seq<Parameter>): nat {
+      if Parameters == [] then 0 else
+      if Parameters[0].mode == InOut then 1 + NumInOutArgs'(Parameters[1..]) else
+      NumInOutArgs'(Parameters[1..])
+    }
+
+    function NumInOutArgs(): nat {
+      NumInOutArgs'(Parameters)
+    }
+
+    function InOutVarsIdxs'(parameter: seq<Parameter>, idx: Idx): seq<Idx>
+      ensures |InOutVarsIdxs'(parameter, idx)| == NumInOutArgs'(parameter)
+    {
+      if parameter == [] then [] else
+      if parameter[0].mode == InOut then
+        [idx] + InOutVarsIdxs'(parameter[1..], idx + 1)
+      else
+        InOutVarsIdxs'(parameter[1..], idx + 1)
+    }
+
+    function InOutVarsIdxs(): seq<Idx>
+    {
+      InOutVarsIdxs'(Parameters, 0)
+    }
+
+    lemma InOutVarsIdxsLemma(parameter: seq<Parameter>, idx: Idx, i: nat)
+      requires i < |InOutVarsIdxs'(parameter, idx)|
+      ensures InOutVarsIdxs'(parameter, idx)[i] < |parameter| + idx
+    {
+      if parameter != [] {
+        if i != 0 {
+          InOutVarsIdxsLemma(parameter[1..], idx + 1, i - 1);
+        }
+      }
+    }
+
+    function InOutArgsState(st: State): State
+      requires |Parameters| <= |st|
+    {
+      seq(|InOutVarsIdxs()|, (i: nat) requires i < |InOutVarsIdxs()| => 
+        InOutVarsIdxsLemma(Parameters, 0, i);
+        st[InOutVarsIdxs()[i]])
+    }
+
+    predicate InPostSet(st: State, st': State) 
+      requires |Parameters| <= |st|
+    {
+      var st'' := st' + InOutArgsState(st);
+      forall e <- Post :: e.IsDefinedOn(|st''|) && st''.Eval(e)
+    }
+
+    ghost function PostSet(st: State): iset<State> 
+      requires |Parameters| <= |st|
+    {
+      iset st': State | InPostSet(st, st')
+    }
+
+    function PostCheck'(p: seq<Expr>): seq<Stmt> {
+      if p == [] then [] else
+        [Check(p[0])] + PostCheck'(p[1..])
+    }
+
+    function PostCheck(): seq<Stmt> {
+      PostCheck'(Post)
+    }
   }
     
   datatype Stmt_ =
@@ -459,6 +509,29 @@ module Defs {
       case Call(_, _) => true
       case _ => false
     }
+
+    function ProceduresCalled(): set<Procedure> {
+      match this
+      case Call(proc, _) => {proc}
+      case Seq(ss) => SeqProceduresCalled(ss)
+      case Choice(s0, s1) => s0.ProceduresCalled() + s1.ProceduresCalled()
+      case NewScope(_, s) => s.ProceduresCalled()
+      case Loop(_, body) => body.ProceduresCalled()
+      case _ => {}
+    }
+
+    
+  }
+
+  function SeqProceduresCalled(ss: seq<Stmt_>): set<Procedure> {
+    if ss == [] then {} else ss[0].ProceduresCalled() + SeqProceduresCalled(ss[1..])
+  }
+
+  lemma SeqProceduresCalledLemma(ss: seq<Stmt_>, s: Stmt_, proc: Procedure)
+    requires s in ss
+    requires proc in s.ProceduresCalled()
+    ensures proc in SeqProceduresCalled(ss)
+  {
   }
 
   type Stmt = s: Stmt_ | s.ValidCalls() witness Seq([])

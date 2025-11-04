@@ -467,4 +467,12 @@ module VCGenOmni {
       }
     }
   }
+
+  method VCGenProc(proc: Procedure) returns (VCs: seq<Expr>) 
+    requires proc.Body.Some?
+  {
+    var context := mkInitialContext(proc);
+    var bcont := Block.Point(proc.PostCheck(), 0);
+    VCs := SeqVCGen([proc.Body.value], context, [bcont]);
+  }
 }

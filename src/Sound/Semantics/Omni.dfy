@@ -4,7 +4,7 @@ module Omni {
     provides Defs, 
       SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
       RefSem, SemSound, SeqRefSem, SeqSemSound, 
-      SemLoopWithCont, InvSem
+      SemLoopWithCont, InvSem, VerifiedProcedureCalls, SeqVerifiedProcedureCalls
     reveals 
       Sem, SeqSem, WP, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
@@ -137,7 +137,9 @@ module Omni {
           st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
   }
 
-  greatest predicate RefSem(s: Stmt, st: State, posts: Continuation) {
+  greatest predicate RefSem(s: Stmt, st: State, posts: Continuation) 
+    // reads * // How to make it work?
+  {
     match s
     case Check(e)       => 
       && e.IsDefinedOn(|st|) 
@@ -150,12 +152,13 @@ module Omni {
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in posts.head
     case Call(proc, args) => 
+      && RefSemProc(proc)
       && args.IsDefinedOn(|st|)
       && var callSt := args.EvalOn(st);
         && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
         && forall st': State :: (
           && st' in st.EqExcept(args.OutArgs())
-          && var callSt' := args.EvalOn(st');
+          && var callSt' := args.EvalOn(st') + args.EvalOldOn(st);
             (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)))
               ==> st' in posts.head
     case Seq(ss)        => SeqRefSem(ss, st, posts)
@@ -166,11 +169,68 @@ module Omni {
     case Loop(inv, body) => RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
 
-  greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) {
+  greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) 
+    // reads * // How to make it work?
+  {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
       (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') ==> RefSem(ss[0], st, posts.UpdateHead(post'))
   }
+
+  greatest predicate RefSemProc(proc: Procedure) 
+    // reads * //proc
+  {
+    proc.Body.Some? ==>
+      forall st: State :: st in proc.PreSet() ==>
+        RefSem(proc.Body.value, st, [proc.PostSet(st)])
+  }
+
+  ghost predicate VerifiedProcedureCalls(s: Stmt)
+  {
+    forall proc <- s.ProceduresCalled() :: RefSemProc(proc)
+  }
+
+  ghost predicate SeqVerifiedProcedureCalls(ss: seq<Stmt>)
+  {
+    forall s <- ss :: VerifiedProcedureCalls(s)
+  }
+
+  lemma VerifiedProcedureCallsSeqLemma(ss: seq<Stmt>)
+    requires SeqVerifiedProcedureCalls(ss)
+    ensures VerifiedProcedureCalls(Seq(ss))
+  {
+    if ss != [] {
+      assert ss == [ss[0]] + ss[1..];
+      forall proc <- SeqProceduresCalled(ss)
+        ensures RefSemProc(proc)
+      {
+        if proc in ss[0].ProceduresCalled() {
+          assert ss[0] in ss;
+        } else {
+          VerifiedProcedureCallsSeqLemma(ss[1..]);
+        }
+      }
+    }
+  }
+
+  lemma VerifiedProcedureCallsSeqLemma'(s: Stmt, ss: seq<Stmt>)
+    requires VerifiedProcedureCalls(Seq(ss))
+    ensures SeqVerifiedProcedureCalls(ss)
+  {
+    if ss != [] {
+      assert ss == [ss[0]] + ss[1..];
+      forall s <- ss
+        ensures VerifiedProcedureCalls(s)
+      {
+        forall proc <- s.ProceduresCalled()
+          ensures RefSemProc(proc)
+        {
+          SeqProceduresCalledLemma(ss, s, proc);
+        }
+      }
+    }
+  }
+    
 
   ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
     iset st: State | Sem(s, st, posts)
@@ -314,16 +374,25 @@ module Omni {
 
   greatest lemma SemSound(s: Stmt, st: State, posts: Continuation)
     requires Sem(s, st, posts)
+    requires VerifiedProcedureCalls(s)
     ensures RefSem(s, st, posts)
   {
     match s
-    case Seq(ss) => SeqSemSound(ss, st, posts);
-    case Loop(inv, body) => SemLoopUnroll(s, inv, body, st, posts);
+    case Seq(ss) => 
+      VerifiedProcedureCallsSeqLemma'(s, ss);
+      SeqSemSound(ss, st, posts);
+    case Loop(inv, body) => 
+      assert VerifiedProcedureCalls(Seq([body, Loop(inv, body)])) by {
+        VerifiedProcedureCallsSeqLemma([body, Loop(inv, body)]);
+      }
+      SemLoopUnroll(s, inv, body, st, posts);
+      SemSound(Seq([body, Loop(inv, body)]), st, posts);
     case _ =>
   }
 
   greatest lemma SeqSemSound(ss: seq<Stmt>, st: State, posts: Continuation)
     requires SeqSem(ss, st, posts)
+    requires SeqVerifiedProcedureCalls(ss)
     ensures SeqRefSem(ss, st, posts)
   {
     if ss != [] {

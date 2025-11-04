@@ -264,35 +264,6 @@ module Context {
       }
     }
 
-    lemma mkPostContextLemma(proc: Procedure, args: CallArguments, oldContext: Context, 
-      st: State, st': State, st'': State, vNew: Idx)
-      requires Call(proc, args).ValidCalls()
-      requires args.IsDefinedOn(|incarnation|)
-      requires args.IsDefinedOn(|oldContext.incarnation|)
-      requires forall i <- incarnation :: i < |st''|
-      requires forall i <- oldContext.incarnation :: i < |st''|
-      requires |oldContext.incarnation| >= args.NumInOutArgs()
-      requires st'' == st.UpdateMapShift(vNew, map i: Idx | i in args.OutArgs() :: st'[i])
-
-      ensures forall i <- mkPostContext(proc, args, oldContext).incarnation :: i < |st''|
-      ensures 
-        mkPostContext(proc, args, oldContext).AdjustState(st'') == 
-        args.EvalOn(st') + args.EvalOldOn(oldContext.AdjustState(st))
-    {
-      // forall i | 0 <= i < |args|
-      //   ensures (mkPostContext(proc, args, oldContext).AdjustState(s))[i] == args.EvalOn(AdjustState(s))[i]
-      // {
-      //   calc {
-      //     (mkPostContext(proc, args, oldContext).AdjustState(s))[i];
-      //     == { args.IsDefinedOnIn(args[i], |incarnation|); 
-      //          assert incarnation[args[i].v] in incarnation; }
-      //     s[incarnation[args[i].v]];
-      //     ==
-      //     args.EvalOn(AdjustState(s))[i];
-      //   }
-      // }
-    }
-
     method AddEq(v: Idx, e: Expr) returns (ghost vNew: Idx, context: Context)
       requires v < |incarnation|
       requires e.IsDefinedOn(|incarnation|)
@@ -450,10 +421,13 @@ module Context {
       AdjustStateSubstituteIdxLemma(s, e, 0);
       assert [] + AdjustState(s) == AdjustState(s);
     }
+  }
 
-    // lemma AdjustStateEvalOnLemma(s: State, e: Expr, args: CallArguments)
-    //   requires e.IsDefinedOn(|incarnation|)
-    //   requires forall ic <- incarnation :: ic < |s|
-    //   ensures args.EvalOn(AdjustState(s)) == AdjustState
+  function mkInitialContext(proc: Procedure): Context
+  {
+    var incr := seq(|proc.Parameters|, (i: nat) => i);
+    var incrOld := seq(proc.NumInOutArgs(), (i: nat) requires i < proc.NumInOutArgs() => 
+      proc.InOutVarsIdxs()[i]);
+    Context(proc.Pre, incr + incrOld)
   }
 }
