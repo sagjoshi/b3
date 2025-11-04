@@ -209,27 +209,33 @@ module Defs {
   datatype Parameter = Parameter(name: string, mode: ParameterMode)
   
   datatype CallArgument =
-    | InArgument(e: Expr)
+    | InArgument(v: Idx)
     | InOutArgument(v: Idx) 
     | OutArgument(v: Idx)
   {
     function ToExpr(): Expr {
       match this
-      case InArgument(e) => e
+      case InArgument(v) => BVar(v)
       case InOutArgument(v) => BVar(v)
       case OutArgument(v) => BVar(v)
     }
 
     function OutArg(): set<Idx> {
       match this
-      case InArgument(_) => {}
+      case InArgument(v) => {}
       case InOutArgument(v) => {v}
       case OutArgument(v) => {v}
     }
 
+    function IsInOutArg(): bool {
+      match this
+      case InOutArgument(v) => true
+      case _ => false
+    }
+
     function Depth(): Idx {
       match this
-      case InArgument(e) => e.Depth()
+      case InArgument(v) => v + 1
       case InOutArgument(v) => v + 1
       case OutArgument(v) => v + 1
     }
@@ -242,9 +248,17 @@ module Defs {
       requires IsDefinedOn(|s|)
     {
       match this
-      case InArgument(e) => s.Eval(e)
+      case InArgument(v) => s[v]
       case InOutArgument(v) => s[v]
       case OutArgument(v) => s[v]
+    }
+
+    function GetVar(): Idx 
+    {
+      match this
+      case InArgument(v) => v
+      case InOutArgument(v) => v
+      case OutArgument(v) => v
     }
   }
 
@@ -257,6 +271,23 @@ module Defs {
 
     function OutArgs(): set<Idx> {
       if this == [] then {} else this[0].OutArg() + this[1..].OutArgs()
+    }
+
+    function InOutArgs(): seq<Idx> 
+      ensures |InOutArgs()| == NumInOutArgs()
+    {
+      if this == [] then 
+        [] else 
+      if this[0].IsInOutArg() then 
+        [this[0].GetVar()] + this[1..].InOutArgs() 
+      else this[1..].InOutArgs()
+    }
+
+    lemma InOutArgsLemma(v: Idx)
+      requires v in InOutArgs()
+      ensures InOutArgument(v) in this
+    {
+
     }
 
     function Depth(): Idx {
@@ -285,10 +316,50 @@ module Defs {
       
     function EvalOn(s: State): State 
       requires IsDefinedOn(|s|)
+      ensures |EvalOn(s)| == |this|
     {
-      if this == [] then [] else [this[0].EvalOn(s)] + this[1..].EvalOn(s)
+      seq(|this|, (i: nat) requires i < |this| => 
+        IsDefinedOnIn(this[i], |s|);
+        this[i].EvalOn(s))
     }
 
+    function EvalOldOn(s: State): State 
+      requires IsDefinedOn(|s|)
+      ensures |EvalOldOn(s)| == NumInOutArgs()
+    {
+      seq(NumInOutArgs(), (i: nat) requires i < NumInOutArgs() => 
+        InOutArgsLemma(InOutArgs()[i]);
+        IsDefinedOnIn(InOutArgument(InOutArgs()[i]), |s|);
+        s[InOutArgs()[i]]
+      )
+    }
+
+    function GetVars(): seq<Idx> 
+    {
+      if this == [] then [] else [this[0].GetVar()] + this[1..].GetVars()
+    }
+
+    function NumInOutArgs(): nat {
+      if this == [] then 
+        0 
+      else 
+        if this[0].InOutArgument? then 
+          1 + this[1..].NumInOutArgs() 
+        else this[1..].NumInOutArgs()
+    }
+
+    lemma NumInOutArgsConcatLemma(args: CallArguments)
+      ensures (this + args).NumInOutArgs() == NumInOutArgs() + args.NumInOutArgs()
+      ensures (this + args).Depth() == max(this.Depth(), args.Depth())
+    {
+      if this == [] {
+        assert this + args == args;
+      } else {
+        assert (this + args)[0] == this[0];
+        assert (this + args)[1..] == this[1..] + args;
+        this[1..].NumInOutArgsConcatLemma(args);
+      }
+    }
   }
 
   class Procedure {
@@ -314,7 +385,7 @@ module Defs {
       match this
       case Call(proc, args) =>
         && (forall e <- proc.Pre :: e.IsDefinedOn(|args|))
-        && (forall e <- proc.Post :: e.IsDefinedOn(|args|))
+        && (forall e <- proc.Post :: e.IsDefinedOn(|args| + args.NumInOutArgs()))
       case Seq(ss) => forall s <- ss :: s.ValidCalls()
       case Choice(s0, s1) => s0.ValidCalls() && s1.ValidCalls()
       case NewScope(n, s) => s.ValidCalls()
@@ -348,10 +419,7 @@ module Defs {
       case NewScope(n, s) => if s.Depth() <= n then 0 else s.Depth() - n
       case Escape(l) => 0
       case Loop(inv, body) => max(inv.Depth(), body.Depth())
-      case Call(proc, args) => 
-        var Pre := SeqSubstitute(proc.Pre, args.ToExpr());
-        var Post := SeqSubstitute(proc.Post, args.ToExpr());
-        max(args.Depth(), max(SeqExprDepth(Pre), SeqExprDepth(Post)))
+      case Call(proc, args) => args.Depth() + args.NumInOutArgs()
     }
 
     function JumpDepth() : Idx {

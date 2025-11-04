@@ -309,10 +309,10 @@ module AssignmentTarget {
       }
     case Seq(ss) => SeqProcess'Correct(ss, st, m, posts);
     case Call(proc, args) => 
-      var Post := SeqSubstitute(proc.Post, args.ToExpr());
       forall st': State |
         && st' in st.EqExcept(args.OutArgs())
-        && (forall e <- Post :: e.IsDefinedOn(|st'|) && st'.Eval(e))
+        && var callSt' := args.EvalOn(st') + args.EvalOldOn(st);
+          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e))
         ensures st' in m.ToEqs(st, posts).head
       { assert |st'| == |st|; }
     case _ =>

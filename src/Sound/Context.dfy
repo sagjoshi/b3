@@ -88,7 +88,7 @@ module Context {
       SubstituteIdx(e, 0)
     }
 
-    function  MkEntailment(e: Expr): Expr
+    function MkEntailment(e: Expr): Expr
       requires e.IsDefinedOn(|incarnation|)
     {
       Implies(Conj(ctx), Substitute(e))
@@ -100,7 +100,7 @@ module Context {
       seq(|ss|, (i: nat) requires i < |ss| => MkEntailment(ss[i]))
     }
 
-    function Index(ss: seq<Expr>, e: Expr): nat
+    function Index<T(==)>(ss: seq<T>, e: T): nat
       requires e in ss
       ensures Index(ss, e) < |ss|
       ensures ss[Index(ss, e)] == e
@@ -149,42 +149,148 @@ module Context {
       this.(ctx := ctx + SeqSubstitute(ss))
     }
 
-    method astractInArgs(args: CallArguments) returns (context: Context, incrPre: seq<nat>)
-      requires args.IsDefinedOn(|incarnation|)
-      // ensures forall v <- seqArgs :: v < |context.incarnation|
-    {
-      context := this;
-      incrPre := [];
-      for i := 0 to |args|
-      {
-        match args[i]
-        case InArgument(e) => 
-          var v := FreshIdx();
-          args.IsDefinedOnIn(args[i], |incarnation|);
-          context := Context(context.ctx + [Eq(BVar(v), Substitute(e))], context.incarnation);
-          incrPre := incrPre + [v];
-        case _ => 
-          args.IsDefinedOnIn(args[i], |incarnation|);
-          incrPre := incrPre + [incarnation[args[i].v]];
-      }
-    }
+    // method mkPreContext(proc: Procedure, args: CallArguments) returns (context: Context)
+    //   requires Call(proc, args).ValidCalls()
+    //   requires args.IsDefinedOn(|incarnation|)
+    //   ensures |context.incarnation| == |args|
+    //   ensures forall i <- context.incarnation :: i in incarnation
+    // {
+    //   var incrPre := [];
+    //   for i := 0 to |args|
+    //     invariant |incrPre| == i
+    //     invariant forall j <- incrPre :: j in incarnation
+    //     invariant args[..i].Depth() <= args.Depth()
+    //     invariant forall s: State :: 
+    //       (forall i <- incarnation :: i < |s|) ==> 
+    //       Context(ctx, incrPre).AdjustState(s) == args[..i].EvalOn(AdjustState(s))
+    //   {
+    //     args.IsDefinedOnIn(args[i], |incarnation|);
+    //     incrPre := incrPre + [incarnation[args[i].v]];
 
-    function ReplaceIncr(incr: seq<nat>): Context
-    {
-      Context(ctx, incr)
-    }
+    //     assert args[..i + 1].Depth() <= args.Depth() by {
+    //       assert args == args[..i + 1] + args[i + 1..];
+    //       args[..i + 1].NumInOutArgsConcatLemma(args[i + 1..]);
+    //     }
+    //   }
+    //   context := Context(ctx, incrPre);
+    // }
 
-    method mkPostContext(proc: Procedure, seqArgs: seq<Idx>, args: CallArguments) returns (context: Context)
-      requires forall v <- seqArgs :: v < |incarnation|
-      requires args.IsDefinedOn(|incarnation|)
+    function mkPreContext(proc: Procedure, args: CallArguments): Context
       requires Call(proc, args).ValidCalls()
-      requires |args| == |seqArgs|
+      requires args.IsDefinedOn(|incarnation|)
+      ensures |mkPreContext(proc, args).incarnation| == |args|
+      ensures forall i <- mkPreContext(proc, args).incarnation :: i in incarnation
     {
-      var vNew, context' := AddVarSet(args.OutArgs()) by {
-        args.OutArgsDepthLemma();
+      var incrPre := seq(|args|, (i: nat) requires i < |args| => 
+        args.IsDefinedOnIn(args[i], |incarnation|);
+        incarnation[args[i].v]);
+      forall i <- incrPre 
+        ensures i in incarnation
+      {
+        assert i == incrPre[Index(incrPre, i)];
+        assert args[Index(incrPre, i)] in args;
+        args.IsDefinedOnIn(args[Index(incrPre, i)], |incarnation|);
+        assert i == incarnation[args[Index(incrPre, i)].v];
       }
-      var contextPost := context'.mkPreContext(seqArgs);
-      context := context'.(ctx := context'.ctx + contextPost.SeqSubstitute(proc.Post));
+      Context(ctx, incrPre)
+    }
+
+    lemma mkPreContextLemma(proc: Procedure, args: CallArguments, s: State)
+      requires Call(proc, args).ValidCalls()
+      requires args.IsDefinedOn(|incarnation|)
+      requires forall i <- incarnation :: i < |s|
+      ensures mkPreContext(proc, args).AdjustState(s) == args.EvalOn(AdjustState(s))
+    {
+      forall i | 0 <= i < |args|
+        ensures (mkPreContext(proc, args).AdjustState(s))[i] == args.EvalOn(AdjustState(s))[i]
+      {
+        calc {
+          (mkPreContext(proc, args).AdjustState(s))[i];
+          == { args.IsDefinedOnIn(args[i], |incarnation|); 
+               assert incarnation[args[i].v] in incarnation; }
+          s[incarnation[args[i].v]];
+          ==
+          args.EvalOn(AdjustState(s))[i];
+        }
+      }
+    }
+
+    function mkPostContext(proc: Procedure, args: CallArguments, oldContext: Context): Context
+      requires Call(proc, args).ValidCalls()
+      requires args.IsDefinedOn(|incarnation|)
+      requires args.IsDefinedOn(|oldContext.incarnation|)
+      requires |oldContext.incarnation| >= args.NumInOutArgs()
+      ensures |mkPostContext(proc, args, oldContext).incarnation| == |args| + args.NumInOutArgs()
+    {
+      var oldNum := args.NumInOutArgs();
+      var incrPost: seq<Idx> := seq(|args|, (i: nat) requires i < |args| => 
+        args.IsDefinedOnIn(args[i], |incarnation|);
+        incarnation[args[i].v]); 
+      var incrPostOld: seq<Idx> := seq(args.NumInOutArgs(), (i: nat) requires i < args.NumInOutArgs() => 
+        args.InOutArgsLemma(args.InOutArgs()[i]); 
+        args.IsDefinedOnIn(InOutArgument(args.InOutArgs()[i]), |oldContext.incarnation|);
+        oldContext.incarnation[args.InOutArgs()[i]]);
+      Context(ctx, incrPost + incrPostOld)
+    }
+
+    lemma mkPostContextIncrSubsetLemma(proc: Procedure, args: CallArguments, oldContext: Context, i: nat)
+      requires Call(proc, args).ValidCalls()
+      requires args.IsDefinedOn(|incarnation|)
+      requires args.IsDefinedOn(|oldContext.incarnation|)
+      requires |oldContext.incarnation| >= args.NumInOutArgs()
+      requires i in mkPostContext(proc, args, oldContext).incarnation
+      ensures i in oldContext.incarnation || i in incarnation
+    {
+      var oldNum := args.NumInOutArgs();
+      var incrPost: seq<Idx> := seq(|args|, (i: nat) requires i < |args| => 
+        args.IsDefinedOnIn(args[i], |incarnation|);
+        incarnation[args[i].v]); 
+      var incrPostOld: seq<Idx> := seq(args.NumInOutArgs(), (i: nat) requires i < args.NumInOutArgs() => 
+        args.InOutArgsLemma(args.InOutArgs()[i]); 
+        args.IsDefinedOnIn(InOutArgument(args.InOutArgs()[i]), |oldContext.incarnation|);
+        oldContext.incarnation[args.InOutArgs()[i]]);
+      assert incrPost + incrPostOld == mkPostContext(proc, args, oldContext).incarnation;
+      assert i in incrPost + incrPostOld;
+      if i in incrPost {
+        assert i == incrPost[Index(incrPost, i)];
+        args.IsDefinedOnIn(args[Index(incrPost, i)], |incarnation|);
+        assert i == incarnation[args[Index(incrPost, i)].v];
+      } else {
+        assert i in incrPostOld;
+        assert i == incrPostOld[Index(incrPostOld, i)];
+        args.InOutArgsLemma(args.InOutArgs()[Index(incrPostOld, i)]);
+        args.IsDefinedOnIn(InOutArgument(args.InOutArgs()[Index(incrPostOld, i)]), |oldContext.incarnation|);
+        assert i == oldContext.incarnation[args.InOutArgs()[Index(incrPostOld, i)]];
+      }
+    }
+
+    lemma mkPostContextLemma(proc: Procedure, args: CallArguments, oldContext: Context, 
+      st: State, st': State, st'': State, vNew: Idx)
+      requires Call(proc, args).ValidCalls()
+      requires args.IsDefinedOn(|incarnation|)
+      requires args.IsDefinedOn(|oldContext.incarnation|)
+      requires forall i <- incarnation :: i < |st''|
+      requires forall i <- oldContext.incarnation :: i < |st''|
+      requires |oldContext.incarnation| >= args.NumInOutArgs()
+      requires st'' == st.UpdateMapShift(vNew, map i: Idx | i in args.OutArgs() :: st'[i])
+
+      ensures forall i <- mkPostContext(proc, args, oldContext).incarnation :: i < |st''|
+      ensures 
+        mkPostContext(proc, args, oldContext).AdjustState(st'') == 
+        args.EvalOn(st') + args.EvalOldOn(oldContext.AdjustState(st))
+    {
+      // forall i | 0 <= i < |args|
+      //   ensures (mkPostContext(proc, args, oldContext).AdjustState(s))[i] == args.EvalOn(AdjustState(s))[i]
+      // {
+      //   calc {
+      //     (mkPostContext(proc, args, oldContext).AdjustState(s))[i];
+      //     == { args.IsDefinedOnIn(args[i], |incarnation|); 
+      //          assert incarnation[args[i].v] in incarnation; }
+      //     s[incarnation[args[i].v]];
+      //     ==
+      //     args.EvalOn(AdjustState(s))[i];
+      //   }
+      // }
     }
 
     method AddEq(v: Idx, e: Expr) returns (ghost vNew: Idx, context: Context)
@@ -345,5 +451,9 @@ module Context {
       assert [] + AdjustState(s) == AdjustState(s);
     }
 
+    // lemma AdjustStateEvalOnLemma(s: State, e: Expr, args: CallArguments)
+    //   requires e.IsDefinedOn(|incarnation|)
+    //   requires forall ic <- incarnation :: ic < |s|
+    //   ensures args.EvalOn(AdjustState(s)) == AdjustState
   }
 }
