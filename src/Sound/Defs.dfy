@@ -360,7 +360,7 @@ module Defs {
     const Parameters: seq<Parameter>
     const Pre: seq<Expr>
     const Post: seq<Expr>
-    const Body: Option<Stmt>
+    var Body: Option<Stmt>
 
     ghost predicate InPreSet(st: State) 
     {
@@ -444,7 +444,7 @@ module Defs {
     function PostCheck(): seq<Stmt> 
       requires Valid()
       ensures SeqIsDefinedOn(PostCheck(), |Parameters| + NumInOutArgs())
-      // reads *
+      reads this`Body
     {
       PostCheck'(Post)
     }
@@ -460,7 +460,7 @@ module Defs {
 
     predicate ValidBody() 
       requires Body.Some?
-      // reads *
+      reads this`Body
     {
       var body := Body.value;
       && body.ValidCalls()
@@ -470,15 +470,23 @@ module Defs {
     }
 
     predicate Valid() 
-      // reads *
+      reads this`Body
     {
       && (Body.Some? ==> ValidBody())
       && (forall e <- Pre :: e.IsDefinedOn(|Parameters|))
       && (forall e <- Post :: e.IsDefinedOn(|Parameters| + NumInOutArgs()))
     }
 
-    function ProceduresCalled(): set<Procedure> {
+    function ProceduresCalled(): set<Procedure> 
+      reads this`Body
+    {
       if Body.Some? then Body.value.ProceduresCalled() else {}
+    }
+
+    function ProceduresCalledAndSelf(): set<Procedure> 
+      reads this`Body
+    {
+      if Body.Some? then Body.value.ProceduresCalled() + {this} else {this}
     }
   }
     

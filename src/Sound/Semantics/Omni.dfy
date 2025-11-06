@@ -177,7 +177,7 @@ module Omni {
   }
 
   greatest predicate RefSem(s: Stmt, st: State, posts: Continuation) 
-    // reads * // How to make it work?
+    reads *
   {
     match s
     case Check(e)       => 
@@ -209,7 +209,7 @@ module Omni {
   }
 
   greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) 
-    // reads * // How to make it work?
+    reads *
   {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
@@ -217,7 +217,7 @@ module Omni {
   }
 
   greatest predicate RefProcedureIsSound(proc: Procedure) 
-    // reads * //proc
+    reads *
   {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet() ==>
@@ -225,7 +225,7 @@ module Omni {
   }
 
   ghost predicate ProcedureIsSound(proc: Procedure) 
-    // reads * //proc
+    reads proc`Body
   {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet() ==>
@@ -233,11 +233,13 @@ module Omni {
   }
 
   ghost predicate VerifiedProcedureCalls(k: ORDINAL, s: Stmt)
+    reads *
   {
     forall proc <- s.ProceduresCalled() :: RefProcedureIsSound#[k](proc)
   }
 
   ghost predicate SeqVerifiedProcedureCalls(k: ORDINAL, ss: seq<Stmt>)
+    reads *
   {
     forall s <- ss :: VerifiedProcedureCalls(k, s)
   }
@@ -245,6 +247,7 @@ module Omni {
   lemma VerifiedProcedureCallsSeqLemma(k: ORDINAL, ss: seq<Stmt>)
     requires SeqVerifiedProcedureCalls(k, ss)
     ensures VerifiedProcedureCalls(k, Seq(ss))
+    // reads *
   {
     if ss != [] {
       assert ss == [ss[0]] + ss[1..];
