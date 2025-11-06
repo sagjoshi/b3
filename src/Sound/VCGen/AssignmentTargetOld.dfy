@@ -1,9 +1,9 @@
 // module AssignmentTarget {
-//   import opened Defs
+//   import opened Utils
 //   import Omni
 
 //   export
-//     provides Defs, Omni, Process, Correct
+//     provides Utils, Omni, Process, Correct
 //     reveals EqsTo
   
 //   predicate ShiftedIn(s: set<Idx>, n: nat, i: Idx) {

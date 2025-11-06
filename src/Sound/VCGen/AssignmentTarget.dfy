@@ -1,9 +1,11 @@
 module AssignmentTarget {
-  import opened Defs
+  import opened Utils
+  import opened AST
+  import opened State
   import Omni
 
   export
-    provides Defs, Omni, Process, Correct
+    provides Utils, AST, State, Omni, Process, Correct
     reveals PairToSet
   
   newtype VarsJumps = map<nat, set<Idx>> {
@@ -311,8 +313,8 @@ module AssignmentTarget {
     case Call(proc, args) => 
       forall st': State |
         && st' in st.EqExcept(args.OutArgs())
-        && var callSt' := args.EvalOn(st') + args.EvalOldOn(st);
-          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e))
+        && var callSt' := args.Eval(st') + args.EvalOld(st);
+          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.Eval(callSt'))
         ensures st' in m.ToEqs(st, posts).head
       { assert |st'| == |st|; }
     case _ =>

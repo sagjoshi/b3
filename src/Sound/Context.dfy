@@ -1,5 +1,8 @@
 module Context {
-  import opened Defs
+  import opened Utils
+  import opened AST
+  import opened State
+  import opened Expr
 
     function SeqDepthExpr(ss: seq<Expr>): Idx 
       ensures forall e <- ss :: e.Depth() <= SeqDepthExpr(ss)
@@ -148,7 +151,7 @@ module Context {
     //     invariant args[..i].Depth() <= args.Depth()
     //     invariant forall s: State :: 
     //       (forall i <- incarnation :: i < |s|) ==> 
-    //       Context(ctx, incrPre).AdjustState(s) == args[..i].EvalOn(AdjustState(s))
+    //       Context(ctx, incrPre).AdjustState(s) == args[..i].Eval(AdjustState(s))
     //   {
     //     args.IsDefinedOnIn(args[i], |incarnation|);
     //     incrPre := incrPre + [incarnation[args[i].v]];
@@ -185,10 +188,10 @@ module Context {
       requires Call(proc, args).ValidCalls()
       requires args.IsDefinedOn(|incarnation|)
       requires forall i <- incarnation :: i < |s|
-      ensures mkPreContext(proc, args).AdjustState(s) == args.EvalOn(AdjustState(s))
+      ensures mkPreContext(proc, args).AdjustState(s) == args.Eval(AdjustState(s))
     {
       forall i | 0 <= i < |args|
-        ensures (mkPreContext(proc, args).AdjustState(s))[i] == args.EvalOn(AdjustState(s))[i]
+        ensures (mkPreContext(proc, args).AdjustState(s))[i] == args.Eval(AdjustState(s))[i]
       {
         calc {
           (mkPreContext(proc, args).AdjustState(s))[i];
@@ -196,7 +199,7 @@ module Context {
                assert incarnation[args[i].v] in incarnation; }
           s[incarnation[args[i].v]];
           ==
-          args.EvalOn(AdjustState(s))[i];
+          args.Eval(AdjustState(s))[i];
         }
       }
     }
@@ -330,13 +333,13 @@ module Context {
     {
         && IsDefinedOn(|s|)
         && (forall i <- incarnation :: i < |s|)
-        && (forall e <- ctx :: s.Eval(e))
+        && (forall e <- ctx :: e.Eval(s))
     }
 
     ghost predicate Entails(e: Expr) 
     {
       forall s: State ::  
-        e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> s.Eval(e)
+        e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> e.Eval(s)
     }
 
     lemma SubstituteIdxIsDefinedOnLemma(e: Expr, i: Idx, d: Idx)
@@ -366,8 +369,8 @@ module Context {
     lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr)
       requires e1.IsDefinedOn(|s1| + 1)
       requires e2.IsDefinedOn(|s2| + 1)
-      requires forall b: bool :: s1.Update([b]).Eval(e1) == s2.Update([b]).Eval(e2)
-      ensures (forall b: bool :: s1.Update([b]).Eval(e1)) == (forall b: bool :: s2.Update([b]).Eval(e2))
+      requires forall b: bool :: e1.Eval(s1.Update([b])) == e2.Eval(s2.Update([b]))
+      ensures (forall b: bool :: e1.Eval(s1.Update([b]))) == (forall b: bool :: e2.Eval(s2.Update([b])))
     {  }
 
     lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx)
@@ -375,17 +378,17 @@ module Context {
       requires forall ic <- incarnation :: ic + i < |s|
       requires i <= |s|
       ensures (SubstituteIdxIsDefinedOnLemma(e, i, |s|);
-        (s[..i] + AdjustState(s[i..])).Eval(e)) == s.Eval(SubstituteIdx(e, i))
+        e.Eval(s[..i] + AdjustState(s[i..]))) == SubstituteIdx(e, i).Eval(s)
       decreases e
     {
       match e 
       case Forall(v, body) =>
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
         assert forall b: bool :: 
-          ((s[..i] + AdjustState(s[i..])).Update([b])).Eval(body) == 
-          (s.Update([b])).Eval(SubstituteIdx(body, i + 1)) by {
+          body.Eval(s[..i] + AdjustState(s[i..]).Update([b])) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([b])) by {
           forall b: bool 
-            ensures ((s[..i] + AdjustState(s[i..])).Update([b])).Eval(body) == (s.Update([b])).Eval(SubstituteIdx(body, i + 1)) {
+            ensures body.Eval(s[..i] + AdjustState(s[i..]).Update([b])) == SubstituteIdx(body, i + 1).Eval(s.Update([b])) {
             assert ([b] + s)[..i+1] == [b] + s[..i];
             assert ([b] + s)[i+1..] == s[i..];
             assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
@@ -401,7 +404,7 @@ module Context {
       requires e.IsDefinedOn(|incarnation|)
       requires forall ic <- incarnation :: ic < |s|
       ensures Substitute(e).IsDefinedOn(|s|)
-      ensures AdjustState(s).Eval(e) == s.Eval(Substitute(e))
+      ensures e.Eval(AdjustState(s)) == Substitute(e).Eval(s)
     {
       SubstituteIsDefinedOnLemma(e, |s|);
       AdjustStateSubstituteIdxLemma(s, e, 0);

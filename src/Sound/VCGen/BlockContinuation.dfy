@@ -1,6 +1,8 @@
 module Block {
-  import opened Defs
-  
+  import opened Utils
+  import opened AST
+  import opened State
+
   datatype Point = Point(cont: seq<Stmt>, varsInScope: nat)
 
   newtype Continuation = seq<Point> {

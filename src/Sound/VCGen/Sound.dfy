@@ -1,6 +1,9 @@
 module VCGenOmni {
-  import opened Defs
+  import opened Utils
+  import opened AST
+  import opened State
   import opened Context
+  import opened Expr
   import Block
   import Omni
   import AssignmentTarget
@@ -22,7 +25,7 @@ module VCGenOmni {
         assert context.MkEntailment(e).Holds();
         forall st: State | context.IsSatisfiedOn(st) 
           ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
-          assert context.AdjustState(st).Eval(e) by { 
+          assert e.Eval(context.AdjustState(st)) by { 
             EvalConjLemma(context.ctx, st);
             context.AdjustStateSubstituteLemma(st, e);
           }
@@ -33,7 +36,7 @@ module VCGenOmni {
       VCs := [];
       forall st: State | context_in.IsSatisfiedOn(st) 
         ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
-        if context.AdjustState(st).Eval(e) {
+        if e.Eval(context.AdjustState(st)) {
           context_in.SubstituteIsDefinedOnLemma(e, |st|);
           context_in.AdjustStateSubstituteLemma(st, e);
         }
@@ -45,9 +48,9 @@ module VCGenOmni {
       forall st: State | context_in.IsSatisfiedOn(st)
         ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
         context_in.SubstituteIsDefinedOnLemma(x, |st|);
-        var v' := st.Eval(context_in.Substitute(x));
+        var v' := context_in.Substitute(x).Eval(st);
         var st' := st.UpdateOrAdd(vNew, v');
-        var stTransformed := context_in.AdjustState(st)[v := context_in.AdjustState(st).Eval(x)];
+        var stTransformed := context_in.AdjustState(st)[v := x.Eval(context_in.AdjustState(st))];
 
         assert stTransformed == context.AdjustState(st') by {
           context_in.AdjustStateSubstituteLemma(st, x);
@@ -61,9 +64,9 @@ module VCGenOmni {
 
           EvalEqLemma(BVar(vNew), context_in.Substitute(x), st');
 
-          assert forall e <- context_in.ctx :: st.Eval(e) ==> st'.Eval(e) by 
+          assert forall e <- context_in.ctx :: e.Eval(st) ==> e.Eval(st') by 
           {
-            forall e: Expr | e in context_in.ctx && st.Eval(e) ensures st'.Eval(e) {
+            forall e: Expr | e in context_in.ctx && e.Eval(st) ensures e.Eval(st') {
               e.EvalDepthLemma(st, st');
             }
           }
@@ -84,16 +87,16 @@ module VCGenOmni {
         forall st: State | context_in.IsSatisfiedOn(st)
           ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels) {
           var stAdj := context_in.AdjustState(st);
-          var callSt := args.EvalOn(stAdj);
+          var callSt := args.Eval(stAdj);
           assert args.IsDefinedOn(|stAdj|);
           forall e <- proc.Pre  
             ensures e.IsDefinedOn(|callSt|) 
-            ensures callSt.Eval(e) 
+            ensures e.Eval(callSt) 
           {
             calc {
-              callSt.Eval(e);
+              e.Eval(callSt);
               { context_in.mkPreContextLemma(proc, args, st); }
-              contextPre.AdjustState(st).Eval(e);
+              e.Eval(contextPre.AdjustState(st));
               { EvalConjLemma(context_in.ctx, st);
                 contextPre.AdjustStateSubstituteLemma(st, e); }
               contextPre.MkEntailment(e).Holds();
@@ -105,8 +108,8 @@ module VCGenOmni {
           }
           forall st': State | 
             && st' in stAdj.EqExcept(args.OutArgs()) 
-            && var callSt' := args.EvalOn(st') + args.EvalOldOn(stAdj);
-               forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && callSt'.Eval(e)
+            && var callSt' := args.Eval(st') + args.EvalOld(stAdj);
+               forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.Eval(callSt')
             ensures st' in context.AdjustedModels 
             {
               forall v <- args.OutArgs() 
@@ -117,12 +120,12 @@ module VCGenOmni {
               assert st' == context.AdjustState(st'') by {
                 assert (map i: Idx | i in args.OutArgs() :: st'[i]).Keys == args.OutArgs();
               }
-              var callSt' := args.EvalOn(st') + args.EvalOldOn(stAdj);
+              var callSt' := args.Eval(st') + args.EvalOld(stAdj);
               assert context.IsSatisfiedOn(st'') by {
                 assert forall i <- context.incarnation :: i < |st''|;
                 forall e <- context.ctx
                   ensures e.IsDefinedOn(|st''|)
-                  ensures st''.Eval(e) {
+                  ensures e.Eval(st'') {
                   if e in context_in.ctx {
                     e.EvalDepthLemma(st, st'');
                   } else {
@@ -134,9 +137,9 @@ module VCGenOmni {
                     }
                     contextPost.SubstituteIsDefinedOnLemma(e', |st''|);
                     calc {
-                      st''.Eval(contextPost.Substitute(e'));
+                      contextPost.Substitute(e').Eval(st'');
                       { contextPost.AdjustStateSubstituteLemma(st'', e'); }
-                      contextPost.AdjustState(st'').Eval(e');
+                      e'.Eval(contextPost.AdjustState(st''));
                       { 
                         assert contextPost.AdjustState(st'') == callSt' by {
                           assert |contextPost.AdjustState(st'')| == |callSt'| == |args| + args.NumInOutArgs();
@@ -149,7 +152,7 @@ module VCGenOmni {
                                      assert context'.incarnation[args[i].v] in context'.incarnation; }
                                 st''[context'.incarnation[args[i].v]];
                                 ==
-                                args.EvalOn(st')[i];
+                                args.Eval(st')[i];
                                 ==
                                 callSt'[i];
                               }
@@ -163,7 +166,7 @@ module VCGenOmni {
                                   assert contextPost.incarnation[i] == context_in.incarnation[args.InOutArgs()[i - |args|]]; }
                                 st''[context_in.incarnation[args.InOutArgs()[i - |args|]]];
                               ==
-                                args.EvalOldOn(context_in.AdjustState(st))[i - |args|];
+                                args.EvalOld(context_in.AdjustState(st))[i - |args|];
                               ==
                                 callSt'[i];
                               }
@@ -348,7 +351,7 @@ module VCGenOmni {
                   ensures Omni.Sem(body, context.AdjustState(st).Update(vs), blockWP.UpdateHead(contWP).UpdateAndAdd(n)) {
                   var st' := st.MergeAt(vNew, vs);
                   assert context'.IsSatisfiedOn(st') by {
-                    forall e: Expr | e in context.ctx && st.Eval(e) {
+                    forall e: Expr | e in context.ctx && e.Eval(st) {
                       e.EvalDepthLemma(st, st');
                     }
                   }
@@ -438,7 +441,7 @@ module VCGenOmni {
               var st' := context.AdjustState(st);
               Omni.SemLoopWithCont(inv, body, cont, st', BlockWPSeq(bcont, AllStates), inv') by {
                 assert st' in inv.Sem() by {
-                  assert context.AdjustState(st).Eval(inv) by { 
+                  assert inv.Eval(context.AdjustState(st)) by { 
                     assert context.MkEntailment(inv).Holds();
                     EvalConjLemma(context.ctx, st);
                     context.AdjustStateSubstituteLemma(st, inv);
@@ -453,7 +456,7 @@ module VCGenOmni {
                   }
                   assert context'.IsSatisfiedOn(st'') by {
                     forall e <- context'.ctx 
-                      ensures st''.Eval(e) {
+                      ensures e.Eval(st'') {
                       e.EvalDepthLemma(st, st'');
                     }
                   }
