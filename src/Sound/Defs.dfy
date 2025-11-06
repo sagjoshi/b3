@@ -2,6 +2,20 @@ module Defs {
 
   import opened Std.Wrappers
 
+  function Index<T(==)>(ss: seq<T>, e: T): nat
+    requires e in ss
+    ensures Index(ss, e) < |ss|
+    ensures ss[Index(ss, e)] == e
+  {
+    if |ss| == 1 then 
+      0
+    else
+      if ss[0] == e then
+        0
+      else
+        Index(ss[1..], e) + 1
+  }
+
   function Max(s: set<nat>): (m: nat)
     requires s != {}
     ensures m in s && forall z :: z in s ==> z <= m
@@ -337,6 +351,10 @@ module Defs {
     }
   }
 
+  // function foo() : Procedure {
+
+  // }
+
   class Procedure {
     const Name: string
     const Parameters: seq<Parameter>
@@ -346,7 +364,10 @@ module Defs {
 
     ghost predicate InPreSet(st: State) 
     {
-      && |Parameters| <= |st|
+      && |Parameters| + NumInOutArgs() == |st|
+      && (forall i: nat :: i < NumInOutArgs() ==> 
+        (InOutVarsIdxsLemma(Parameters, 0, i);
+         st[i + |Parameters|] == st[InOutVarsIdxs()[i]]))
       && forall e <- Pre :: e.IsDefinedOn(|st|) && st.Eval(e)
     }
     ghost function PreSet(): iset<State> {
@@ -397,26 +418,67 @@ module Defs {
         st[InOutVarsIdxs()[i]])
     }
 
-    predicate InPostSet(st: State, st': State) 
-      requires |Parameters| <= |st|
+    predicate InPostSet(st: State) 
     {
-      var st'' := st' + InOutArgsState(st);
-      forall e <- Post :: e.IsDefinedOn(|st''|) && st''.Eval(e)
+      forall e <- Post :: e.IsDefinedOn(|st|) && st.Eval(e)
     }
 
-    ghost function PostSet(st: State): iset<State> 
-      requires |Parameters| <= |st|
+    ghost function PostSet(): iset<State> 
     {
-      iset st': State | InPostSet(st, st')
+      iset st': State | InPostSet(st')
     }
 
-    function PostCheck'(p: seq<Expr>): seq<Stmt> {
+    function PostCheck'(p: seq<Expr>): seq<Stmt> 
+      requires forall e <- p :: e.IsDefinedOn(|Parameters| + NumInOutArgs())
+      ensures SeqIsDefinedOn(PostCheck'(p), |Parameters| + NumInOutArgs())
+      ensures SeqJumpsDefinedOn(PostCheck'(p), 0)
+    {
       if p == [] then [] else
+        assert forall e <- p[1..] :: e in p;
+        assert p[0] in p;
+        assert p[0].IsDefinedOn(|Parameters| + NumInOutArgs());
+        assert Check(p[0]).IsDefinedOn(|Parameters| + NumInOutArgs());
         [Check(p[0])] + PostCheck'(p[1..])
     }
 
-    function PostCheck(): seq<Stmt> {
+    function PostCheck(): seq<Stmt> 
+      requires Valid()
+      ensures SeqIsDefinedOn(PostCheck(), |Parameters| + NumInOutArgs())
+      // reads *
+    {
       PostCheck'(Post)
+    }
+
+    predicate IsOldVar(i: Idx) 
+    {
+      |Parameters| <= i
+    }
+
+    function OldVars(): set<Idx> {
+      set i: Idx | IsOldVar(i) && i < |Parameters| + NumInOutArgs()
+    }
+
+    predicate ValidBody() 
+      requires Body.Some?
+      // reads *
+    {
+      var body := Body.value;
+      && body.ValidCalls()
+      && body.IsDefinedOn(|Parameters| + NumInOutArgs())
+      && body.JumpsDefinedOn(0)
+      && body.ImmutableVars(OldVars())
+    }
+
+    predicate Valid() 
+      // reads *
+    {
+      && (Body.Some? ==> ValidBody())
+      && (forall e <- Pre :: e.IsDefinedOn(|Parameters|))
+      && (forall e <- Post :: e.IsDefinedOn(|Parameters| + NumInOutArgs()))
+    }
+
+    function ProceduresCalled(): set<Procedure> {
+      if Body.Some? then Body.value.ProceduresCalled() else {}
     }
   }
     
@@ -520,7 +582,25 @@ module Defs {
       case _ => {}
     }
 
-    
+    predicate ImmutableVarsIdx(vars: set<Idx>, i: Idx) {
+      match this
+      case Assign(x, _) => x + i !in vars
+      case NewScope(n, s) => s.ImmutableVarsIdx(vars, i + n) 
+      case Seq(ss) => SeqImmutableVarsIdx(ss, vars, i)
+      case Choice(s0, s1) => s0.ImmutableVarsIdx(vars, i) && s1.ImmutableVarsIdx(vars, i)
+      case Loop(_, body) => body.ImmutableVarsIdx(vars, i)
+      case _ => true
+    }
+
+    predicate ImmutableVars(vars: set<Idx>) {
+      ImmutableVarsIdx(vars, 0)
+    }
+  }
+
+  predicate SeqImmutableVarsIdx(ss: seq<Stmt_>, vars: set<Idx>, i: Idx)
+  {
+    if ss == [] then true else
+    ss[0].ImmutableVarsIdx(vars, i) && SeqImmutableVarsIdx(ss[1..], vars, i)
   }
 
   function SeqProceduresCalled(ss: seq<Stmt_>): set<Procedure> {
@@ -688,6 +768,13 @@ module Defs {
     }
 
     ghost function EqExcept(vars: set<Idx>) : iset<State>
+    {
+      iset st': State | 
+        && |st'| == |this|
+        && forall i: Idx :: i < |this| && i !in vars ==> st'[i] == this[i]
+    }
+
+    ghost function EqOn(vars: set<Idx>) : iset<State>
     {
       iset st': State | 
         && |st'| == |this|

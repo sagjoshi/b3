@@ -100,20 +100,6 @@ module Context {
       seq(|ss|, (i: nat) requires i < |ss| => MkEntailment(ss[i]))
     }
 
-    function Index<T(==)>(ss: seq<T>, e: T): nat
-      requires e in ss
-      ensures Index(ss, e) < |ss|
-      ensures ss[Index(ss, e)] == e
-    {
-      if |ss| == 1 then 
-        0
-      else
-        if ss[0] == e then
-          0
-        else
-          Index(ss[1..], e) + 1
-    }
-
     lemma MkEntailmentSeqLemma(ss: seq<Expr>, e: Expr)
       requires forall e <- ss :: e.IsDefinedOn(|incarnation|)
       requires e in ss
@@ -429,5 +415,18 @@ module Context {
     var incrOld := seq(proc.NumInOutArgs(), (i: nat) requires i < proc.NumInOutArgs() => 
       proc.InOutVarsIdxs()[i]);
     Context(proc.Pre, incr + incrOld)
+  }
+
+  lemma mkInitialContextLemma(proc: Procedure, i: nat)
+    requires i in mkInitialContext(proc).incarnation
+    ensures i < |proc.Parameters| + proc.NumInOutArgs()
+  {
+    var incr := seq(|proc.Parameters|, (i: nat) => i);
+    var incrOld := seq(proc.NumInOutArgs(), (i: nat) requires i < proc.NumInOutArgs() => 
+      proc.InOutVarsIdxs()[i]);
+    if i in incrOld {
+      assert i == proc.InOutVarsIdxs()[Index(incrOld, i)];
+      proc.InOutVarsIdxsLemma(proc.Parameters, 0, Index(incrOld, i));
+    }
   }
 }

@@ -3,12 +3,14 @@ module Omni {
   export
     provides Defs, 
       SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
-      RefSem, SemSound, SeqRefSem, SeqSemSound, 
-      SemLoopWithCont, InvSem, VerifiedProcedureCalls, SeqVerifiedProcedureCalls
+      RefSem, SeqRefSem, SemSoundProcs, 
+      SemLoopWithCont, InvSem, VerifiedProcedureCalls, SeqVerifiedProcedureCalls,
+      Continuation.Update0, SemConsDepthLemma, SemPostCheckLemma
     reveals 
       Sem, SeqSem, WP, SeqWP, SemSingle, 
-      Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, Continuation.Leq,
-      Continuation.UpdateHead, PreservesInv, Continuation.Get
+      Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, 
+      Continuation.Leq, Continuation.LeqDepth,
+      Continuation.UpdateHead, PreservesInv, Continuation.Get, RefProcedureIsSound, ProcedureIsSound
 
   /**
   
@@ -51,6 +53,17 @@ module Omni {
       if |this| == 1 then [head'] else [head'] + this[1..].Update(variablesInScope)
     }
 
+    lemma Update0()
+      ensures Update(0) == this
+    {
+      if |this| == 1 {
+        assert UpdateSet(0, head) == head;
+      } else {
+        assert UpdateSet(0, head) == head;
+        this[1..].Update0();
+      }
+    }
+
     ghost function UpdateAndAdd(variablesInScope: nat): Continuation {
       ([head] + this).Update(variablesInScope)
     }
@@ -60,9 +73,22 @@ module Omni {
       && forall i: nat :: i < |this| ==> this[i] <= cont2[i]
     }
 
+    predicate LeqDepth(cont2: Continuation, n: nat) {
+      && |this| > n
+      && |cont2| > n
+      && forall i: nat :: i <= n ==> this[i] <= cont2[i]
+    }
+
     lemma LeqUpdate(variablesInScope: nat, cont: Continuation) 
       requires Leq(cont) 
       ensures Update(variablesInScope).Leq(cont.Update(variablesInScope))
+    {
+
+    }
+
+    lemma LeqDepthUpdate(variablesInScope: nat, cont: Continuation, n: nat)
+      requires LeqDepth(cont, n)
+      ensures Update(variablesInScope).LeqDepth(cont.Update(variablesInScope), n)
     {
 
     }
@@ -74,9 +100,22 @@ module Omni {
       ([head] + this).LeqUpdate(variablesInScope, [cont.head] + cont);
     }
 
+    lemma LeqDepthUpdateAndAdd(variablesInScope: nat, cont: Continuation, n: nat)
+      requires LeqDepth(cont, n)
+      ensures UpdateAndAdd(variablesInScope).LeqDepth(cont.UpdateAndAdd(variablesInScope), n + 1)
+    {
+      ([head] + this).LeqDepthUpdate(variablesInScope, [cont.head] + cont, n + 1);
+    }
+
     lemma LeqUpdateHead(post: iset<State>, cont: Continuation) 
       requires Leq(cont) 
       ensures UpdateHead(post).Leq(cont.UpdateHead(post))
+    {
+    }
+
+    lemma LeqDepthUpdateHead(post: iset<State>, cont: Continuation, n: nat)
+      requires LeqDepth(cont, n)
+      ensures UpdateHead(post).LeqDepth(cont.UpdateHead(post), n)
     {
     }
   }
@@ -152,7 +191,7 @@ module Omni {
       && v.IsDefinedOn(|st|) 
       && st[x := st.Eval(v)] in posts.head
     case Call(proc, args) => 
-      && RefSemProc(proc)
+      && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)
       && var callSt := args.EvalOn(st);
         && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && callSt.Eval(e))
@@ -177,53 +216,61 @@ module Omni {
       (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') ==> RefSem(ss[0], st, posts.UpdateHead(post'))
   }
 
-  greatest predicate RefSemProc(proc: Procedure) 
+  greatest predicate RefProcedureIsSound(proc: Procedure) 
     // reads * //proc
   {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet() ==>
-        RefSem(proc.Body.value, st, [proc.PostSet(st)])
+        RefSem(proc.Body.value, st, [proc.PostSet()])
   }
 
-  ghost predicate VerifiedProcedureCalls(s: Stmt)
+  ghost predicate ProcedureIsSound(proc: Procedure) 
+    // reads * //proc
   {
-    forall proc <- s.ProceduresCalled() :: RefSemProc(proc)
+    proc.Body.Some? ==>
+      forall st: State :: st in proc.PreSet() ==>
+        Sem(proc.Body.value, st, [proc.PostSet()])
   }
 
-  ghost predicate SeqVerifiedProcedureCalls(ss: seq<Stmt>)
+  ghost predicate VerifiedProcedureCalls(k: ORDINAL, s: Stmt)
   {
-    forall s <- ss :: VerifiedProcedureCalls(s)
+    forall proc <- s.ProceduresCalled() :: RefProcedureIsSound#[k](proc)
   }
 
-  lemma VerifiedProcedureCallsSeqLemma(ss: seq<Stmt>)
-    requires SeqVerifiedProcedureCalls(ss)
-    ensures VerifiedProcedureCalls(Seq(ss))
+  ghost predicate SeqVerifiedProcedureCalls(k: ORDINAL, ss: seq<Stmt>)
+  {
+    forall s <- ss :: VerifiedProcedureCalls(k, s)
+  }
+
+  lemma VerifiedProcedureCallsSeqLemma(k: ORDINAL, ss: seq<Stmt>)
+    requires SeqVerifiedProcedureCalls(k, ss)
+    ensures VerifiedProcedureCalls(k, Seq(ss))
   {
     if ss != [] {
       assert ss == [ss[0]] + ss[1..];
       forall proc <- SeqProceduresCalled(ss)
-        ensures RefSemProc(proc)
+        ensures RefProcedureIsSound#[k](proc)
       {
         if proc in ss[0].ProceduresCalled() {
           assert ss[0] in ss;
         } else {
-          VerifiedProcedureCallsSeqLemma(ss[1..]);
+          VerifiedProcedureCallsSeqLemma(k, ss[1..]);
         }
       }
     }
   }
 
-  lemma VerifiedProcedureCallsSeqLemma'(s: Stmt, ss: seq<Stmt>)
-    requires VerifiedProcedureCalls(Seq(ss))
-    ensures SeqVerifiedProcedureCalls(ss)
+  lemma VerifiedProcedureCallsSeqLemma'(k: ORDINAL, s: Stmt, ss: seq<Stmt>)
+    requires VerifiedProcedureCalls(k, Seq(ss))
+    ensures SeqVerifiedProcedureCalls(k, ss)
   {
     if ss != [] {
       assert ss == [ss[0]] + ss[1..];
       forall s <- ss
-        ensures VerifiedProcedureCalls(s)
+        ensures VerifiedProcedureCalls(k, s)
       {
         forall proc <- s.ProceduresCalled()
-          ensures RefSemProc(proc)
+          ensures RefProcedureIsSound#[k](proc)
         {
           SeqProceduresCalledLemma(ss, s, proc);
         }
@@ -372,36 +419,105 @@ module Omni {
     }
   }
 
-  greatest lemma SemSound(s: Stmt, st: State, posts: Continuation)
+  lemma SemSound(k: ORDINAL, s: Stmt, st: State, posts: Continuation)
     requires Sem(s, st, posts)
-    requires VerifiedProcedureCalls(s)
-    ensures RefSem(s, st, posts)
+    requires forall n :: n < k ==> VerifiedProcedureCalls(n, s)
+    ensures RefSem#[k](s, st, posts)
   {
-    match s
-    case Seq(ss) => 
-      VerifiedProcedureCallsSeqLemma'(s, ss);
-      SeqSemSound(ss, st, posts);
-    case Loop(inv, body) => 
-      assert VerifiedProcedureCalls(Seq([body, Loop(inv, body)])) by {
-        VerifiedProcedureCallsSeqLemma([body, Loop(inv, body)]);
-      }
-      SemLoopUnroll(s, inv, body, st, posts);
-      SemSound(Seq([body, Loop(inv, body)]), st, posts);
-    case _ =>
+      if k.Offset != 0 {
+      match s
+      case Seq(ss) =>
+        SeqSemSound(k - 1, ss, st, posts) by {
+          forall n: ORDINAL | n < k - 1 {
+            VerifiedProcedureCallsSeqLemma'(n, s, ss);
+          }
+        }
+      case Loop(inv, body) => 
+        SemLoopUnroll(s, inv, body, st, posts);
+        SemSound(k - 1, Seq([body, Loop(inv, body)]), st, posts) by {
+          forall n: ORDINAL | n < k - 1 
+            ensures VerifiedProcedureCalls(n, Seq([body, Loop(inv, body)])) {
+            assert VerifiedProcedureCalls(n, Seq([body, Loop(inv, body)])) by {
+              VerifiedProcedureCallsSeqLemma(n, [body, Loop(inv, body)]);
+            }
+          }
+        }
+      case Call(proc, args) => assert RefProcedureIsSound#[k - 1](proc);
+      case _ =>
+    }
   }
 
-  greatest lemma SeqSemSound(ss: seq<Stmt>, st: State, posts: Continuation)
+  lemma SeqSemSound(k: ORDINAL, ss: seq<Stmt>, st: State, posts: Continuation)
     requires SeqSem(ss, st, posts)
-    requires SeqVerifiedProcedureCalls(ss)
-    ensures SeqRefSem(ss, st, posts)
+    requires forall n: ORDINAL :: n < k ==> SeqVerifiedProcedureCalls(n, ss)
+    ensures SeqRefSem#[k](ss, st, posts)
   {
-    if ss != [] {
-      forall post': iset<State> | (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') 
-        ensures RefSem(ss[0], st, posts.UpdateHead(post')) {
-        SemSound(ss[0], st, posts.UpdateHead(post'));
+    if k.Offset != 0 {
+      if ss != [] {
+        forall post': iset<State> | (forall st: State :: SeqRefSem#[k - 1](ss[1..], st, posts) ==> st in post') 
+          ensures RefSem#[k - 1](ss[0], st, posts.UpdateHead(post')) {
+          SemSound(k - 1, ss[0], st, posts.UpdateHead(post'));
+        }
       }
     }
   } 
+
+  lemma SemSoundProc(proc: Procedure, procs: set<Procedure>, k: ORDINAL)
+    requires proc in procs
+    requires forall proc <- procs :: proc.Valid()
+    requires proc.ProceduresCalled() <= procs
+    requires proc.Body.Some? ==> 
+      forall n: ORDINAL :: n < k ==> VerifiedProcedureCalls(n, proc.Body.value)
+    requires ProcedureIsSound(proc)
+    ensures RefProcedureIsSound#[k](proc)
+  {
+    if k.Offset != 0 {
+      if proc.Body.Some? {
+        forall st: State | st in proc.PreSet()
+          ensures RefSem#[k - 1](proc.Body.value, st, [proc.PostSet()]) {
+          SemSound(k - 1, proc.Body.value, st, [proc.PostSet()]);
+        }
+      }
+    }
+  }
+
+  lemma SemSoundProcsk(k: ORDINAL, procs: set<Procedure>)
+    requires forall proc <- procs :: proc.Valid()
+    requires forall proc <- procs :: ProcedureIsSound(proc)
+    requires forall proc <- procs :: proc.ProceduresCalled() <= procs
+    ensures  forall proc <- procs :: RefProcedureIsSound#[k](proc)
+  {
+    forall proc <- procs 
+      ensures RefProcedureIsSound#[k](proc) {
+      SemSoundProc(proc, procs, k) by {
+        if proc.Body.Some? {
+          forall n: ORDINAL | n < k
+            ensures VerifiedProcedureCalls(n, proc.Body.value) {
+            forall proc' <- proc.Body.value.ProceduresCalled()
+              ensures RefProcedureIsSound#[n](proc') {
+              assert proc' in procs;
+              SemSoundProcsk(n, procs);
+            } 
+          }
+        }
+      }
+    }
+  }
+
+  lemma SemSoundProcs(procs: set<Procedure>)
+    requires forall proc <- procs :: proc.Valid()
+    requires forall proc <- procs :: ProcedureIsSound(proc)
+    requires forall proc <- procs :: proc.ProceduresCalled() <= procs
+    ensures  forall proc <- procs :: RefProcedureIsSound(proc)
+  {
+    forall proc <- procs
+      ensures RefProcedureIsSound(proc) {
+      forall k: ORDINAL 
+        ensures RefProcedureIsSound#[k](proc) {
+        SemSoundProcsk(k, procs);
+      }
+    }
+  }
 
   lemma SemLoopWithCont(inv: Expr, body: Stmt, cont: seq<Stmt>, st: State, posts: Continuation, inv': iset<State>)
     requires st in inv'
@@ -416,9 +532,41 @@ module Omni {
     }
   }
   
-  lemma SemDepthLemma(s: Stmt, st: State, posts: Continuation)
+  lemma SemConsDepthLemma(s: Stmt, st: State, posts: Continuation, posts': Continuation, n: nat)
     requires Sem(s, st, posts)
-    
+    requires posts.LeqDepth(posts', n)
+    requires s.JumpsDefinedOn(n)
+    ensures Sem(s, st, posts')
+  {
+    match s
+    case Seq(ss) => SeqSemConsDepthLemma(ss, st, posts, posts', n);
+    case NewScope(m, s) => 
+      forall vs: State | |vs| == m 
+        ensures Sem(s, st.Update(vs), posts'.UpdateAndAdd(m)) {
+        if s.JumpDepth() == 0 {
+          SemConsDepthLemma(s, st.Update(vs), posts.UpdateAndAdd(m), posts'.UpdateAndAdd(m), 0);
+        } else {
+          posts.LeqDepthUpdateAndAdd(m, posts', n);
+          SemConsDepthLemma(s, st.Update(vs), posts.UpdateAndAdd(m), posts'.UpdateAndAdd(m), n + 1);
+        }
+      }
+    case Loop(_, body) => forall inv { posts.LeqDepthUpdateHead(inv, posts', n); }
+    case _ =>
+  }
+
+  lemma SeqSemConsDepthLemma(ss: seq<Stmt>, st: State, posts: Continuation, posts': Continuation, n: nat)
+    requires SeqSem(ss, st, posts)
+    requires posts.LeqDepth(posts', n)
+    requires SeqJumpsDefinedOn(ss, n)
+    ensures SeqSem(ss, st, posts')
+  {
+    if ss != [] {
+      assert ss == [ss[0]] + ss[1..];
+      forall post': iset<State> | (forall st: State :: SeqSem(ss[1..], st, posts') ==> st in post') {
+        SemConsDepthLemma(ss[0], st, posts.UpdateHead(post'), posts'.UpdateHead(post'), n);
+      }
+    }
+  }
 
   lemma InvSem(inv: Expr, body: Stmt, st: State, posts: Continuation, stmt: Stmt)
     requires SeqSem([Assume(inv), body, Check(inv), stmt], st, posts)
@@ -436,5 +584,36 @@ module Omni {
         SeqSemSingle(Check(inv), st', posts.UpdateHead(SeqWP([stmt], posts)));
       }
     }
+  }
+
+  lemma SemPostCheck'Lemma(proc: Procedure, st: State, posts: Continuation, p: seq<Expr>)
+    requires forall e <- p :: e.IsDefinedOn(|proc.Parameters| + proc.NumInOutArgs())
+    requires SeqSem(proc.PostCheck'(p), st, posts)
+    ensures forall e <- p :: e.IsDefinedOn(|st|) && st.Eval(e)
+  {
+    if p != [] {
+      forall e <- p 
+        ensures e.IsDefinedOn(|st|) && st.Eval(e) {
+        SeqSemNest([Check(p[0])], proc.PostCheck'(p[1..]), st, posts) by {
+          assert forall e <- p[1..] :: e in p;
+        }
+        if e in p[1..] {
+          SemPostCheck'Lemma(proc, st, posts, p[1..]) by {
+            forall e <- p[1..]
+              ensures e.IsDefinedOn(|proc.Parameters| + proc.NumInOutArgs()) {
+              assert e in p;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  lemma SemPostCheckLemma(proc: Procedure, st: State, posts: Continuation)
+    requires proc.Valid()
+    requires SeqSem(proc.PostCheck(), st, posts)
+    ensures forall e <- proc.Post :: e.IsDefinedOn(|st|) && st.Eval(e)
+  {
+    SemPostCheck'Lemma(proc, st, posts, proc.Post);
   }
 }
