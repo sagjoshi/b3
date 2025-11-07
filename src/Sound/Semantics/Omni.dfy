@@ -7,7 +7,7 @@ module Omni {
     provides Utils, AST, State, Expr,
       SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
       RefSem, SeqRefSem, SemSoundProcs, SingleCont,
-      SemLoopWithCont, InvSem, VerifiedProcedureCalls, SeqVerifiedProcedureCalls,
+      SemLoopWithCont, InvSem,
       Continuation.Update0, SemConsDepthLemma, SemPostCheckLemma
     reveals 
       Sem, SeqSem, WP, SeqWP, SemSingle, 
@@ -241,57 +241,7 @@ module Omni {
       forall st: State :: st in proc.PreSet() ==>
         Sem(proc.Body.value, st, [proc.PostSet()])
   }
-
-  ghost predicate VerifiedProcedureCalls(k: ORDINAL, s: Stmt)
-    reads *
-  {
-    forall proc <- s.ProceduresCalled() :: RefProcedureIsSound#[k](proc)
-  }
-
-  ghost predicate SeqVerifiedProcedureCalls(k: ORDINAL, ss: seq<Stmt>)
-    reads *
-  {
-    forall s <- ss :: VerifiedProcedureCalls(k, s)
-  }
-
-  lemma VerifiedProcedureCallsSeqLemma(k: ORDINAL, ss: seq<Stmt>)
-    requires SeqVerifiedProcedureCalls(k, ss)
-    ensures VerifiedProcedureCalls(k, Seq(ss))
-    // reads *
-  {
-    if ss != [] {
-      assert ss == [ss[0]] + ss[1..];
-      forall proc <- SeqProceduresCalled(ss)
-        ensures RefProcedureIsSound#[k](proc)
-      {
-        if proc in ss[0].ProceduresCalled() {
-          assert ss[0] in ss;
-        } else {
-          VerifiedProcedureCallsSeqLemma(k, ss[1..]);
-        }
-      }
-    }
-  }
-
-  lemma VerifiedProcedureCallsSeqLemma'(k: ORDINAL, s: Stmt, ss: seq<Stmt>)
-    requires VerifiedProcedureCalls(k, Seq(ss))
-    ensures SeqVerifiedProcedureCalls(k, ss)
-  {
-    if ss != [] {
-      assert ss == [ss[0]] + ss[1..];
-      forall s <- ss
-        ensures VerifiedProcedureCalls(k, s)
-      {
-        forall proc <- s.ProceduresCalled()
-          ensures RefProcedureIsSound#[k](proc)
-        {
-          SeqProceduresCalledLemma(ss, s, proc);
-        }
-      }
-    }
-  }
-    
-
+ 
   ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
     iset st: State | Sem(s, st, posts)
   }
