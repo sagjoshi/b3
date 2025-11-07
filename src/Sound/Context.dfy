@@ -87,6 +87,32 @@ module Context {
       assert MkEntailment(e) == MkEntailmentSeq(ss)[Index(ss, e)];
     }
 
+    lemma MkEntailmentLemma(e: Expr, st: State)
+      requires e.IsDefinedOn(|incarnation|)
+      requires forall ic <- incarnation :: ic < |st|
+      requires IsSatisfiedOn(st)
+      requires MkEntailment(e).Holds()
+      ensures e.HoldsOn(AdjustState(st))
+    {
+      assert Implies(Conj(ctx), Substitute(e)).IsDefinedOn(|st|) by {
+        IsDefinedOnImpliesLemma(Conj(ctx), Substitute(e), st) by {
+          EvalConjLemma(ctx, st);
+          SubstituteIsDefinedOnLemma(e, |st|);
+        }
+      }
+      assert e.HoldsOn(AdjustState(st)) by { 
+        calc {
+          e.HoldsOn(AdjustState(st));
+          { SubstituteIsDefinedOnLemma(e, |st|);
+            AdjustStateSubstituteLemma(st, e); }
+          Substitute(e).HoldsOn(st);
+          { EvalConjLemma(ctx, st);
+            AdjustStateSubstituteLemma(st, e); }
+          MkEntailment(e).Holds();
+        }
+      }
+   }
+
     function Add(e: Expr): Context
       requires e.IsDefinedOn(|incarnation|)
     {

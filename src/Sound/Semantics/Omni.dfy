@@ -6,7 +6,7 @@ module Omni {
   export
     provides Utils, AST, State, Expr,
       SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
-      RefSem, SeqRefSem, SemSoundProcs, 
+      RefSem, SeqRefSem, SemSoundProcs, SingleCont,
       SemLoopWithCont, InvSem, VerifiedProcedureCalls, SeqVerifiedProcedureCalls,
       Continuation.Update0, SemConsDepthLemma, SemPostCheckLemma
     reveals 
@@ -123,6 +123,10 @@ module Omni {
     }
   }
 
+  function SingleCont(post: iset<State>): Continuation {
+    [post]
+  }
+
   /**
     wp ( (1 :: (1 :: 2 := A; exit(1)); 1 := B);) [post] st == 
     wp ((1 :: 2 := A; exit(1)); 1 := B) [Upd(post), Upd(post)] st ==
@@ -189,6 +193,7 @@ module Omni {
       && (e.HoldsOn(st) &&  st in posts.head)
     case Assume(e)      => 
       && e.IsDefinedOn(|st|) 
+      // e.Eval(st).SomeBVal?
       && (e.HoldsOn(st) ==> st in posts.head)
     case Assign(x, v)   => 
       && x < |st|
@@ -226,7 +231,7 @@ module Omni {
   {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet() ==>
-        RefSem(proc.Body.value, st, [proc.PostSet()])
+        RefSem(proc.Body.value, st, SingleCont(proc.PostSet()))
   }
 
   ghost predicate ProcedureIsSound(proc: Procedure) 
@@ -427,87 +432,81 @@ module Omni {
     }
   }
 
-  lemma SemSound(k: ORDINAL, s: Stmt, st: State, posts: Continuation)
+  greatest lemma SemSound(s: Stmt, st: State, posts: Continuation, procs: set<Procedure>)
     requires Sem(s, st, posts)
-    requires forall n :: n < k ==> VerifiedProcedureCalls(n, s)
-    ensures RefSem#[k](s, st, posts)
+    requires forall p <- procs :: p.ProceduresCalled() <= procs
+    requires s.ProceduresCalled() <= procs
+    requires forall p <- procs :: ProcedureIsSound(p)
+    ensures RefSem(s, st, posts)
   {
-      if k.Offset != 0 {
       match s
-      case Seq(ss) =>
-        SeqSemSound(k - 1, ss, st, posts) by {
-          forall n: ORDINAL | n < k - 1 {
-            VerifiedProcedureCallsSeqLemma'(n, s, ss);
-          }
-        }
+      case Seq(ss) => SeqSemSound(ss, st, posts, procs);
       case Loop(inv, body) => 
         SemLoopUnroll(s, inv, body, st, posts);
-        SemSound(k - 1, Seq([body, Loop(inv, body)]), st, posts) by {
-          forall n: ORDINAL | n < k - 1 
-            ensures VerifiedProcedureCalls(n, Seq([body, Loop(inv, body)])) {
-            assert VerifiedProcedureCalls(n, Seq([body, Loop(inv, body)])) by {
-              VerifiedProcedureCallsSeqLemma(n, [body, Loop(inv, body)]);
+        SemSound(Seq([body, Loop(inv, body)]), st, posts, procs) by {
+          forall p <- SeqProceduresCalled([body, Loop(inv, body)]) 
+            ensures p in s.ProceduresCalled()
+          {
+            assert [body, Loop(inv, body)][0] == body;
+            assert [body, Loop(inv, body)][1..] == [Loop(inv, body)];
+            assert [Loop(inv, body)][0] == Loop(inv, body);
+            assert [Loop(inv, body)][1..] == [];
+            calc {
+              SeqProceduresCalled([body, Loop(inv, body)]);
+              ==
+              body.ProceduresCalled() + SeqProceduresCalled([Loop(inv, body)]);
+              == 
+              body.ProceduresCalled() + Loop(inv, body).ProceduresCalled() + SeqProceduresCalled([]);
             }
           }
         }
-      case Call(proc, args) => assert RefProcedureIsSound#[k - 1](proc);
+      case Call(proc, args) => 
+        assert ProcedureIsSound(proc);
+        ProcedureIsSoundSound(proc, procs);
       case _ =>
-    }
   }
 
-  lemma SeqSemSound(k: ORDINAL, ss: seq<Stmt>, st: State, posts: Continuation)
-    requires SeqSem(ss, st, posts)
-    requires forall n: ORDINAL :: n < k ==> SeqVerifiedProcedureCalls(n, ss)
-    ensures SeqRefSem#[k](ss, st, posts)
-  {
-    if k.Offset != 0 {
-      if ss != [] {
-        forall post': iset<State> | (forall st: State :: SeqRefSem#[k - 1](ss[1..], st, posts) ==> st in post') 
-          ensures RefSem#[k - 1](ss[0], st, posts.UpdateHead(post')) {
-          SemSound(k - 1, ss[0], st, posts.UpdateHead(post'));
-        }
-      }
-    }
-  } 
-
-  lemma SemSoundProc(proc: Procedure, procs: set<Procedure>, k: ORDINAL)
-    requires proc in procs
-    requires forall proc <- procs :: proc.Valid()
-    requires proc.ProceduresCalled() <= procs
-    requires proc.Body.Some? ==> 
-      forall n: ORDINAL :: n < k ==> VerifiedProcedureCalls(n, proc.Body.value)
+  greatest lemma ProcedureIsSoundSound(proc: Procedure, procs: set<Procedure>)
     requires ProcedureIsSound(proc)
-    ensures RefProcedureIsSound#[k](proc)
+    requires forall p <- procs :: p.ProceduresCalled() <= procs
+    requires proc.ProceduresCalled() <= procs
+    requires forall p <- procs :: ProcedureIsSound(p)
+    ensures RefProcedureIsSound(proc)
   {
-    if k.Offset != 0 {
-      if proc.Body.Some? {
-        forall st: State | st in proc.PreSet()
-          ensures RefSem#[k - 1](proc.Body.value, st, [proc.PostSet()]) {
-          SemSound(k - 1, proc.Body.value, st, [proc.PostSet()]);
-        }
+    if proc.Body.Some? {
+      forall st: State | st in proc.PreSet()
+        ensures RefSem(proc.Body.value, st, SingleCont(proc.PostSet())) {
+        SemSound(proc.Body.value, st, SingleCont(proc.PostSet()), procs);
       }
     }
   }
 
-  lemma SemSoundProcsk(k: ORDINAL, procs: set<Procedure>)
-    requires forall proc <- procs :: proc.Valid()
-    requires forall proc <- procs :: ProcedureIsSound(proc)
-    requires forall proc <- procs :: proc.ProceduresCalled() <= procs
-    ensures  forall proc <- procs :: RefProcedureIsSound#[k](proc)
+  greatest lemma SeqSemSound(ss: seq<Stmt>, st: State, posts: Continuation, procs: set<Procedure>)
+    requires SeqSem(ss, st, posts)
+    requires forall p <- procs :: p.ProceduresCalled() <= procs
+    requires SeqProceduresCalled(ss) <= procs
+    requires forall p <- procs :: ProcedureIsSound(p)
+    ensures SeqRefSem(ss, st, posts)
   {
-    forall proc <- procs 
-      ensures RefProcedureIsSound#[k](proc) {
-      SemSoundProc(proc, procs, k) by {
-        if proc.Body.Some? {
-          forall n: ORDINAL | n < k
-            ensures VerifiedProcedureCalls(n, proc.Body.value) {
-            forall proc' <- proc.Body.value.ProceduresCalled()
-              ensures RefProcedureIsSound#[n](proc') {
-              assert proc' in procs;
-              SemSoundProcsk(n, procs);
-            } 
-          }
-        }
+    if ss != [] {
+      forall post': iset<State> | (forall st: State :: SeqRefSem(ss[1..], st, posts) ==> st in post') 
+        ensures RefSem(ss[0], st, posts.UpdateHead(post')) {
+        SemSound(ss[0], st, posts.UpdateHead(post'), procs);
+      }
+    }
+  }
+
+  lemma SemSoundProc(proc: Procedure, procs: set<Procedure>)
+    requires proc in procs
+    requires proc.ProceduresCalled() <= procs
+    requires forall p <- procs :: p.ProceduresCalled() <= procs
+    requires forall p <- procs :: ProcedureIsSound(p)
+    ensures RefProcedureIsSound(proc)
+  {
+    if proc.Body.Some? {
+      forall st: State | st in proc.PreSet()
+        ensures RefSem(proc.Body.value, st, SingleCont(proc.PostSet())) {
+        SemSound(proc.Body.value, st, SingleCont(proc.PostSet()), procs);
       }
     }
   }
@@ -518,12 +517,9 @@ module Omni {
     requires forall proc <- procs :: proc.ProceduresCalled() <= procs
     ensures  forall proc <- procs :: RefProcedureIsSound(proc)
   {
-    forall proc <- procs
+    forall proc <- procs 
       ensures RefProcedureIsSound(proc) {
-      forall k: ORDINAL 
-        ensures RefProcedureIsSound#[k](proc) {
-        SemSoundProcsk(k, procs);
-      }
+      SemSoundProc(proc, procs);
     }
   }
 
