@@ -4,25 +4,6 @@ module Context {
   import opened State
   import opened Expr
 
-    function SeqDepthExpr(ss: seq<Expr>): Idx 
-      ensures forall e <- ss :: e.Depth() <= SeqDepthExpr(ss)
-    {
-      if ss == [] then 0 else max(ss[0].Depth(), SeqDepthExpr(ss[1..]))
-    }
-
-
-  function  SeqMax(ss: seq<Idx>): Idx 
-    ensures forall i <- ss :: i <= SeqMax(ss)
-    ensures forall i: nat :: i < |ss| ==> ss[i] <= SeqMax(ss)
-    ensures ss != [] ==> SeqMax(ss) in ss
-  {
-    if ss == [] then 
-      0 
-    else
-      assert ss == [ss[0]] + (ss[1..]);
-      max(ss[0], SeqMax(ss[1..]))
-  }
-
   datatype Context = Context(
     ctx: seq<Expr>,
     incarnation: seq<nat>) 
@@ -42,15 +23,15 @@ module Context {
 
     function Depth(): Idx 
     {
-      max(SeqDepthExpr(ctx), SeqMax(incarnation))
+      max(SeqExprDepth(ctx), SeqMax(incarnation))
     }
 
     function FreshIdx(): Idx
       ensures forall i <- incarnation :: i < FreshIdx()
-      ensures SeqDepthExpr(ctx) < FreshIdx()
+      ensures SeqExprDepth(ctx) < FreshIdx()
       ensures forall c <- ctx :: c.Depth() < FreshIdx()
     {
-      max(SeqMax(incarnation), SeqDepthExpr(ctx)) + 1
+      max(SeqMax(incarnation), SeqExprDepth(ctx)) + 1
     }
 
     
@@ -69,20 +50,15 @@ module Context {
     {
       match e
       case BConst(bvalue) => e
+      case IConst(ivalue) => e
       case BVar(v) =>
         if v >= i then  
           BVar(incarnation[v - i] + i) 
         else e
-      case And(e0, e1) => 
-        And(SubstituteIdx(e0, i), SubstituteIdx(e1, i))
-      case Or(e0, e1) => 
-        Or(SubstituteIdx(e0, i), SubstituteIdx(e1, i))
-      case Not(e) => 
-        Not(SubstituteIdx(e, i))
-      case Implies(e0, e1) => 
-        Implies(SubstituteIdx(e0, i), SubstituteIdx(e1, i))
-      case Forall(v, body) => 
-        Forall(v, SubstituteIdx(body, i + 1))
+      case OperatorExpr(op, args) =>
+        OperatorExpr(op, seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i)))
+      case QuantifierExpr(univ, v, tp, body) =>
+        QuantifierExpr(univ, v, tp, SubstituteIdx(body, i + 1))
     }
 
     function Substitute(e: Expr): Expr
@@ -262,7 +238,7 @@ module Context {
       ensures forall i <- incarnation :: i < vNew 
       ensures forall c <- ctx :: c.Depth() < vNew
       ensures SeqMax(incarnation) < vNew
-      ensures SeqDepthExpr(ctx) < vNew
+      ensures SeqExprDepth(ctx) < vNew
       // ensures 
     {
       var v' := FreshIdx();
@@ -279,7 +255,7 @@ module Context {
       ensures forall i: nat :: i in vars ==> context.incarnation[i] == vNew + i
       ensures vNew > SeqMax(incarnation)
       ensures forall c <- ctx :: c.Depth() < vNew
-      ensures SeqDepthExpr(ctx) < vNew
+      ensures SeqExprDepth(ctx) < vNew
       ensures forall i: nat :: i !in vars && i < |incarnation| ==> context.incarnation[i] == incarnation[i]
       ensures forall i <- context.incarnation :: i <= vNew + Max'(vars)
     {
@@ -316,7 +292,7 @@ module Context {
       ensures forall i: nat :: n <= i < |incarnation| + n ==> context.incarnation[i] == incarnation[i - n]
       ensures forall c <- ctx :: c.Depth() < vNew
       ensures SeqMax(incarnation) < vNew
-      ensures SeqDepthExpr(ctx) < vNew
+      ensures SeqExprDepth(ctx) < vNew
     {
       var v := FreshIdx();
       var addOn := seq(n, (i: nat) => v + i);
@@ -333,13 +309,13 @@ module Context {
     {
         && IsDefinedOn(|s|)
         && (forall i <- incarnation :: i < |s|)
-        && (forall e <- ctx :: e.Eval(s))
+        && (forall e <- ctx :: e.HoldsOn(s))
     }
 
     ghost predicate Entails(e: Expr) 
     {
       forall s: State ::  
-        e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> e.Eval(s)
+        e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> e.HoldsOn(s)
     }
 
     lemma SubstituteIdxIsDefinedOnLemma(e: Expr, i: Idx, d: Idx)
@@ -352,9 +328,15 @@ module Context {
     {
       match e 
       case BVar(v) => if v >= i { assert incarnation[v - i] in incarnation; }
-      case Forall(v, body) => SubstituteIdxIsDefinedOnLemma(body, i + 1, d + 1);
+      case OperatorExpr(op, args) => 
+        var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
+        SeqExprDepthLemma'(ss, d);
+      case QuantifierExpr(univ, v, tp, body) =>
+        SubstituteIdxIsDefinedOnLemma(body, i + 1, d + 1);
       case _ =>
     }
+
+    // lemma SubstituteIdxIsDefinedOnLemmaOperator
 
     lemma SubstituteIsDefinedOnLemma(e: Expr, d: Idx)
       requires e.IsDefinedOn(|incarnation|)
@@ -369,8 +351,29 @@ module Context {
     lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr)
       requires e1.IsDefinedOn(|s1| + 1)
       requires e2.IsDefinedOn(|s2| + 1)
-      requires forall b: bool :: e1.Eval(s1.Update([b])) == e2.Eval(s2.Update([b]))
-      ensures (forall b: bool :: e1.Eval(s1.Update([b]))) == (forall b: bool :: e2.Eval(s2.Update([b])))
+      requires forall b: bool :: e1.HoldsOn(s1.Update([BVal(b)])) == e2.HoldsOn(s2.Update([BVal(b)]))
+      ensures (forall b: bool :: e1.HoldsOn(s1.Update([BVal(b)]))) == (forall b: bool :: e2.HoldsOn(s2.Update([BVal(b)])))
+    {  }
+
+    lemma ExistsPush(s1: State, s2: State, e1: Expr, e2: Expr)
+      requires e1.IsDefinedOn(|s1| + 1)
+      requires e2.IsDefinedOn(|s2| + 1)
+      requires forall b: bool :: e1.HoldsOn(s1.Update([BVal(b)])) == e2.HoldsOn(s2.Update([BVal(b)]))
+      ensures (exists b: bool :: e1.HoldsOn(s1.Update([BVal(b)]))) == (exists b: bool :: e2.HoldsOn(s2.Update([BVal(b)])))
+    {  }
+
+    lemma ForallPushInt(s1: State, s2: State, e1: Expr, e2: Expr)
+      requires e1.IsDefinedOn(|s1| + 1)
+      requires e2.IsDefinedOn(|s2| + 1)
+      requires forall b: int :: e1.HoldsOn(s1.Update([IVal(b)])) == e2.HoldsOn(s2.Update([IVal(b)]))
+      ensures (forall b: int :: e1.HoldsOn(s1.Update([IVal(b)]))) == (forall b: int :: e2.HoldsOn(s2.Update([IVal(b)])))
+    {  }
+
+    lemma ExistsPushInt(s1: State, s2: State, e1: Expr, e2: Expr)
+      requires e1.IsDefinedOn(|s1| + 1)
+      requires e2.IsDefinedOn(|s2| + 1)
+      requires forall b: int :: e1.HoldsOn(s1.Update([IVal(b)])) == e2.HoldsOn(s2.Update([IVal(b)]))
+      ensures (exists b: int :: e1.HoldsOn(s1.Update([IVal(b)]))) == (exists b: int :: e2.HoldsOn(s2.Update([IVal(b)])))
     {  }
 
     lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx)
@@ -382,29 +385,83 @@ module Context {
       decreases e
     {
       match e 
-      case Forall(v, body) =>
+      case OperatorExpr(op, args) =>
+      case QuantifierExpr(true, v, BType, body) => 
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
         assert forall b: bool :: 
-          body.Eval(s[..i] + AdjustState(s[i..]).Update([b])) == 
-          SubstituteIdx(body, i + 1).Eval(s.Update([b])) by {
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([BVal(b)])) by {
           forall b: bool 
-            ensures body.Eval(s[..i] + AdjustState(s[i..]).Update([b])) == SubstituteIdx(body, i + 1).Eval(s.Update([b])) {
-            assert ([b] + s)[..i+1] == [b] + s[..i];
-            assert ([b] + s)[i+1..] == s[i..];
-            assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
-            AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == SubstituteIdx(body, i + 1).Eval(s.Update([BVal(b)])) {
+            assert ([BVal(b)] + s)[..i+1] == [BVal(b)] + s[..i];
+            assert ([BVal(b)] + s)[i+1..] == s[i..];
+            assert ((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == (([BVal(b)] + s)[..i+1] + AdjustState(([BVal(b)] + s)[i+1..]));
+            AdjustStateSubstituteIdxLemma([BVal(b)] + s, body, i + 1);
           }
         }
-        ForallPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1));
+          ForallPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1));
+      case QuantifierExpr(false, v, BType, body) => 
+        SubstituteIdxIsDefinedOnLemma(e, i, |s|);
+        assert forall b: bool :: 
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([BVal(b)])) by {
+          forall b: bool 
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == SubstituteIdx(body, i + 1).Eval(s.Update([BVal(b)])) {
+            assert ([BVal(b)] + s)[..i+1] == [BVal(b)] + s[..i];
+            assert ([BVal(b)] + s)[i+1..] == s[i..];
+            assert ((s[..i] + AdjustState(s[i..])).Update([BVal(b)])) == (([BVal(b)] + s)[..i+1] + AdjustState(([BVal(b)] + s)[i+1..]));
+            AdjustStateSubstituteIdxLemma([BVal(b)] + s, body, i + 1);
+          }
+        }
+        ExistsPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1));
+      case QuantifierExpr(true, v, IType, body) => 
+        SubstituteIdxIsDefinedOnLemma(e, i, |s|);
+        assert forall b: int :: 
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([IVal(b)])) by {
+          forall b: int 
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == SubstituteIdx(body, i + 1).Eval(s.Update([IVal(b)])) {
+            assert ([IVal(b)] + s)[..i+1] == [IVal(b)] + s[..i];
+            assert ([IVal(b)] + s)[i+1..] == s[i..];
+            assert ((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == (([IVal(b)] + s)[..i+1] + AdjustState(([IVal(b)] + s)[i+1..]));
+            AdjustStateSubstituteIdxLemma([IVal(b)] + s, body, i + 1);
+          }
+        }
+        ForallPushInt(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1));
+      case QuantifierExpr(false, v, IType, body) =>
+        SubstituteIdxIsDefinedOnLemma(e, i, |s|);
+        assert forall b: int :: 
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([IVal(b)])) by {
+          forall b: int 
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == SubstituteIdx(body, i + 1).Eval(s.Update([IVal(b)])) {
+            assert ([IVal(b)] + s)[..i+1] == [IVal(b)] + s[..i];
+            assert ([IVal(b)] + s)[i+1..] == s[i..];
+            assert ((s[..i] + AdjustState(s[i..])).Update([IVal(b)])) == (([IVal(b)] + s)[..i+1] + AdjustState(([IVal(b)] + s)[i+1..]));
+            AdjustStateSubstituteIdxLemma([IVal(b)] + s, body, i + 1);
+          }
+        }
+        ExistsPushInt(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1));
       case BVar(v) => if v >= i { assert incarnation[v - i] in incarnation; }
       case _  => 
+    }
+
+    lemma AdjustStateSubstituteEvalLemma(s: State, e: Expr)
+      requires e.IsDefinedOn(|incarnation|)
+      requires forall ic <- incarnation :: ic < |s|
+      ensures Substitute(e).IsDefinedOn(|s|)
+      ensures e.Eval(AdjustState(s)) == Substitute(e).Eval(s)
+    {
+      SubstituteIsDefinedOnLemma(e, |s|);
+      AdjustStateSubstituteIdxLemma(s, e, 0);
+      assert [] + AdjustState(s) == AdjustState(s);
     }
 
     lemma AdjustStateSubstituteLemma(s: State, e: Expr)
       requires e.IsDefinedOn(|incarnation|)
       requires forall ic <- incarnation :: ic < |s|
       ensures Substitute(e).IsDefinedOn(|s|)
-      ensures e.Eval(AdjustState(s)) == Substitute(e).Eval(s)
+      ensures e.HoldsOn(AdjustState(s)) == Substitute(e).HoldsOn(s)
     {
       SubstituteIsDefinedOnLemma(e, |s|);
       AdjustStateSubstituteIdxLemma(s, e, 0);

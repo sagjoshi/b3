@@ -175,7 +175,7 @@ module AST {
       Depth() <= d
     }
 
-    function Eval(s: State): Value 
+    function Eval(s: State): Val
       requires IsDefinedOn(|s|)
     {
       match this
@@ -307,16 +307,16 @@ module AST {
       && (forall i: nat :: i < NumInOutArgs() ==> 
         (InOutVarsIdxsLemma(Parameters, 0, i);
          st[i + |Parameters|] == st[InOutVarsIdxs()[i]]))
-      && forall e <- Pre :: e.IsDefinedOn(|st|) && e.Eval(st)
+      && forall e <- Pre :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
     }
 
     ghost function PreSet(): iset<State> {
       iset st: State | InPreSet(st)
     }
 
-    predicate InPostSet(st: State) 
+    ghost predicate InPostSet(st: State) 
     {
-      forall e <- Post :: e.IsDefinedOn(|st|) && e.Eval(st)
+      forall e <- Post :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
     }
 
     ghost function PostSet(): iset<State> 

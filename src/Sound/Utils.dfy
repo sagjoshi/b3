@@ -71,6 +71,18 @@ module Utils {
     if x < y then x else y
   }
 
+  function SeqMax(ss: seq<nat>): nat 
+    ensures forall i <- ss :: i <= SeqMax(ss)
+    ensures forall i: nat :: i < |ss| ==> ss[i] <= SeqMax(ss)
+    ensures ss != [] ==> SeqMax(ss) in ss
+  {
+    if ss == [] then 
+      0 
+    else
+      assert ss == [ss[0]] + (ss[1..]);
+      max(ss[0], SeqMax(ss[1..]))
+  }
+
   datatype Except<+T> =
     | Ok(res: T)
     | Error

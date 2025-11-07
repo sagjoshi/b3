@@ -314,7 +314,7 @@ module AssignmentTarget {
       forall st': State |
         && st' in st.EqExcept(args.OutArgs())
         && var callSt' := args.Eval(st') + args.EvalOld(st);
-          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.Eval(callSt'))
+          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt'))
         ensures st' in m.ToEqs(st, posts).head
       { assert |st'| == |st|; }
     case _ =>

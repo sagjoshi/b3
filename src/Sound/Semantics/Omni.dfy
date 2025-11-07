@@ -139,22 +139,23 @@ module Omni {
     match s
     case Check(e)       => 
       && e.IsDefinedOn(|st|) 
-      && (e.Eval(st) &&  st in post)
+      && (e.HoldsOn(st) &&  st in post)
     case Assume(e)      => 
       && e.IsDefinedOn(|st|) 
-      && (e.Eval(st) ==> st in post)
-    case Assign(x, v)   => 
-      && x < |st|
-      && v.IsDefinedOn(|st|) 
-      && st[x := v.Eval(st)] in post
+      && (e.HoldsOn(st) ==> st in post)
+    case Assign(x, v)   =>
+        && x < |st|
+        && v.IsDefinedOn(|st|)
+        // TODO: We need typechecking for this
+        && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in post)
     case Call(proc, args) =>
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
-        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && e.Eval(callSt))
+        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && e.HoldsOn(callSt))
         && forall st': State :: (
           && st' in st.EqExcept(args.OutArgs())
           && var callSt' := args.Eval(st') + args.EvalOld(st);
-            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.Eval(callSt')))
+            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt')))
               ==> st' in post
   }
 
@@ -185,23 +186,23 @@ module Omni {
     match s
     case Check(e)       => 
       && e.IsDefinedOn(|st|) 
-      && (e.Eval(st) &&  st in posts.head)
+      && (e.HoldsOn(st) &&  st in posts.head)
     case Assume(e)      => 
       && e.IsDefinedOn(|st|) 
-      && (e.Eval(st) ==> st in posts.head)
+      && (e.HoldsOn(st) ==> st in posts.head)
     case Assign(x, v)   => 
       && x < |st|
       && v.IsDefinedOn(|st|) 
-      && st[x := v.Eval(st)] in posts.head
+      && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in posts.head)
     case Call(proc, args) => 
       && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
-        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && e.Eval(callSt))
+        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && e.HoldsOn(callSt))
         && forall st': State :: (
           && st' in st.EqExcept(args.OutArgs())
           && var callSt' := args.Eval(st') + args.EvalOld(st);
-            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.Eval(callSt')))
+            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt')))
               ==> st' in posts.head
     case Seq(ss)        => SeqRefSem(ss, st, posts)
     case Choice(s0, s1) => RefSem(s0, st, posts) && RefSem(s1, st, posts)
@@ -595,11 +596,11 @@ module Omni {
   lemma SemPostCheck'Lemma(proc: Procedure, st: State, posts: Continuation, p: seq<Expr>)
     requires forall e <- p :: e.IsDefinedOn(|proc.Parameters| + proc.NumInOutArgs())
     requires SeqSem(proc.PostCheck'(p), st, posts)
-    ensures forall e <- p :: e.IsDefinedOn(|st|) && e.Eval(st)
+    ensures forall e <- p :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
   {
     if p != [] {
       forall e <- p 
-        ensures e.IsDefinedOn(|st|) && e.Eval(st) {
+        ensures e.IsDefinedOn(|st|) && e.HoldsOn(st) {
         SeqSemNest([Check(p[0])], proc.PostCheck'(p[1..]), st, posts) by {
           assert forall e <- p[1..] :: e in p;
         }
@@ -618,7 +619,7 @@ module Omni {
   lemma SemPostCheckLemma(proc: Procedure, st: State, posts: Continuation)
     requires proc.Valid()
     requires SeqSem(proc.PostCheck(), st, posts)
-    ensures forall e <- proc.Post :: e.IsDefinedOn(|st|) && e.Eval(st)
+    ensures forall e <- proc.Post :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
   {
     SemPostCheck'Lemma(proc, st, posts, proc.Post);
   }

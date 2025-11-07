@@ -1,18 +1,35 @@
 module State {
   import opened Utils
+  import opened Std.Wrappers
 
-  type Value = bool
+  // Q: should we add error as a constructor?
+  datatype Val =
+    | BVal(bvalue: bool)
+    | IVal(ivalue: int)
+
+  function SomeBVal?(o: Option<Val>): bool {
+    match o
+    case Some(BVal(b)) => true
+    case _ => false
+  }
+
+  function SomeBValTrue?(o: Option<Val>): bool {
+    match o
+    case Some(BVal(true)) => true
+    case _ => false
+  }
+  
   type Variable = string
   type Idx = nat
 
 
-  newtype State = seq<Value> {
+  newtype State = seq<Val> {
 
     function Update(vals: State): State {
       vals + this
     }
 
-    function UpdateMapShift(i: Idx, vals: map<Idx, Value>): State  
+    function UpdateMapShift(i: Idx, vals: map<Idx, Val>): State  
       ensures |UpdateMapShift(i, vals)| > i
       ensures |UpdateMapShift(i, vals)| >= |this|
       ensures forall v <- vals.Keys :: |UpdateMapShift(i, vals)| > v + i
@@ -26,11 +43,11 @@ module State {
           vals[j - i] 
         else if j < |this| then
           this[j]
-        else false
+        else BVal(false)
       )
     }
 
-    function UpdateOrAdd(i: Idx, val: Value): State 
+    function UpdateOrAdd(i: Idx, val: Val): State 
       ensures |UpdateOrAdd(i, val)| > i
       ensures |UpdateOrAdd(i, val)| >= |this|
       ensures forall j: Idx :: j < |this| ==> j != i ==> UpdateOrAdd(i, val)[j] == this[j]
