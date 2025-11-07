@@ -119,9 +119,33 @@ module AST {
       requires d1 <= d2
       ensures IsDefinedOn(d1) ==> IsDefinedOn(d2)
     {  }
+
+    ghost predicate IsSafe() {
+      match this
+      case Check(e) => e.IsSafe()
+      case Assume(e) => e.IsSafe()
+      case Assign(_, e) => e.IsSafe()
+      case Seq(ss) => SeqIsSafe(ss)
+      case Choice(s0, s1) => s0.IsSafe() && s1.IsSafe()
+      case NewScope(_, s) => s.IsSafe()
+      case Escape(l) => true
+      case Loop(inv, body) => inv.IsSafe() && body.IsSafe()
+      case Call(proc, args) => true
+    }
   }
 
   type Stmt = s: Stmt_ | s.ValidCalls() witness Seq([])
+
+  ghost predicate SeqIsSafe(ss: seq<Stmt_>) {
+    forall s <- ss :: s.IsSafe()
+  }
+
+  lemma SeqIsSafeSeqLemma(ss: seq<Stmt_>, cont: seq<Stmt_>)
+    requires SeqIsSafe([Seq(ss)] + cont)
+    ensures SeqIsSafe(ss)
+  {
+    assert Seq(ss) in [Seq(ss)] + cont;
+  }
 
   function SeqProceduresCalled(ss: seq<Stmt_>): set<Procedure> {
     if ss == [] then {} else ss[0].ProceduresCalled() + SeqProceduresCalled(ss[1..])
@@ -408,6 +432,35 @@ module AST {
       reads this`Body
     {
       if Body.Some? then Body.value.ProceduresCalled() + {this} else {this}
+    }
+
+    ghost predicate IsSafe() 
+      reads this`Body
+    {
+      && (forall e <- Pre :: e.IsSafe())
+      && (forall e <- Post :: e.IsSafe())
+      && (Body.Some? ==> Body.value.IsSafe())
+    }
+
+    lemma IsSafeLemma'(p: seq<Expr>)
+      requires forall e <- p :: e.IsSafe()
+      requires forall e <- p :: e.IsDefinedOn(|Parameters| + NumInOutArgs())
+      ensures SeqIsSafe(PostCheck'(p))
+    {
+      if p != [] {
+        assert p[0] in p;
+        IsSafeLemma'(p[1..]) by {
+          assert forall e <- p[1..] :: e in p;
+        }
+      }
+    }
+
+    lemma IsSafeLemma()
+      requires IsSafe()
+      requires Valid()
+      ensures SeqIsSafe(PostCheck())
+    {
+      IsSafeLemma'(Post);
     }
   }
 

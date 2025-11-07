@@ -141,6 +141,11 @@ module Expr {
       Eval(s) == Some(BVal(true))
     }
 
+    ghost predicate IsSafe() 
+    {
+      forall s: State :: IsDefinedOn(|s|) ==> Eval(s).Some? 
+    }
+
     lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr)
       requires e1.IsDefinedOn(|s1| + 1)
       requires e2.IsDefinedOn(|s2| + 1)

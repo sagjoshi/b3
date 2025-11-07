@@ -11,6 +11,7 @@ module VCGenOmni {
   method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
     requires s.IsDefinedOn(|context_in.incarnation|)
     requires s.Single()
+    requires s.IsSafe()
     ensures |context_in.incarnation| <= |context.incarnation|
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall st: State :: 
@@ -269,6 +270,9 @@ module VCGenOmni {
     requires bcont.VarsDefined(|context.incarnation|)
     requires bcont.JumpsDefined()
 
+    requires forall stmt <- s :: stmt.IsSafe()
+    requires bcont.IsSafe()
+
     decreases SeqSize(s) + bcont.Size()
 
     ensures
@@ -316,6 +320,10 @@ module VCGenOmni {
           VCs := SeqVCGen(ss + cont, context, bcont) by {
             // decreases
             SeqFunConcatLemmas(ss, cont);
+            // IsSafe
+            assert SeqIsSafe(ss) by {
+              SeqIsSafeSeqLemma(ss, cont);
+            }
           }
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
@@ -324,8 +332,16 @@ module VCGenOmni {
             }
           }
         case Choice(ss0, ss1) =>
-          var VCs0 := SeqVCGen([ss0] + cont, context, bcont);
-          var VCs1 := SeqVCGen([ss1] + cont, context, bcont);
+          var VCs0 := SeqVCGen([ss0] + cont, context, bcont) by {
+            assert ss0.IsSafe() by {
+              assert Choice(ss0, ss1) in [Choice(ss0, ss1)] + cont;
+            }
+          }
+          var VCs1 := SeqVCGen([ss1] + cont, context, bcont) by {
+            assert ss1.IsSafe() by {
+              assert Choice(ss0, ss1) in [Choice(ss0, ss1)] + cont;
+            }
+          }
           VCs := VCs0 + VCs1;
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
@@ -337,6 +353,11 @@ module VCGenOmni {
             // decreases
             bcont.UpdateSize(cont, n);
             assert SeqSize([body]) == body.Size();
+            // IsSafe
+            assert body.IsSafe() by {
+              assert NewScope(n, body) in [NewScope(n, body)] + cont;
+            }
+            assert bcont.Update(cont, n).IsSafe();
           }
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
@@ -430,6 +451,7 @@ module VCGenOmni {
             }
             // IsDefinedOn
             IsDefinedLoop(inv, body, |context'.incarnation|, |bcont|);
+            // IsSafe
           }
           VCs := [VCInvIni] + VCInvLoop;
           if (forall e <- VCs :: e.Holds()) {

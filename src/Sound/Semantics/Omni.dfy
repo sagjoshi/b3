@@ -146,8 +146,8 @@ module Omni {
     case Assign(x, v)   =>
         && x < |st|
         && v.IsDefinedOn(|st|)
-        // TODO: We need typechecking for this
-        && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in post)
+        && v.Eval(st).Some?
+        && st[x := v.Eval(st).value] in post
     case Call(proc, args) =>
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
@@ -193,7 +193,8 @@ module Omni {
     case Assign(x, v)   => 
       && x < |st|
       && v.IsDefinedOn(|st|) 
-      && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in posts.head)
+      && v.Eval(st).Some?
+      && st[x := v.Eval(st).value] in posts.head
     case Call(proc, args) => 
       && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)

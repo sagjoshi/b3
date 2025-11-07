@@ -6,6 +6,11 @@ module Block {
   datatype Point = Point(cont: seq<Stmt>, varsInScope: nat)
 
   newtype Continuation = seq<Point> {
+
+    ghost predicate IsSafe() {
+      forall point <- this :: SeqIsSafe(point.cont)
+    }
+
     function Update(cont: seq<Stmt>, varsInScope: nat): Continuation {
       [Point(cont, varsInScope)] + this
     }
