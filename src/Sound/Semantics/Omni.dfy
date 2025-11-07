@@ -397,10 +397,6 @@ module Omni {
           forall p <- SeqProceduresCalled([body, Loop(inv, body)]) 
             ensures p in s.ProceduresCalled()
           {
-            assert [body, Loop(inv, body)][0] == body;
-            assert [body, Loop(inv, body)][1..] == [Loop(inv, body)];
-            assert [Loop(inv, body)][0] == Loop(inv, body);
-            assert [Loop(inv, body)][1..] == [];
             calc {
               SeqProceduresCalled([body, Loop(inv, body)]);
               ==
