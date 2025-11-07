@@ -452,6 +452,12 @@ module VCGenOmni {
             // IsDefinedOn
             IsDefinedLoop(inv, body, |context'.incarnation|, |bcont|);
             // IsSafe
+            assert inv.IsSafe() by {
+              assert Loop(inv, body) in [Loop(inv, body)] + cont;
+            }
+            assert body.IsSafe() by {
+              assert Loop(inv, body) in [Loop(inv, body)] + cont;
+            }
           }
           VCs := [VCInvIni] + VCInvLoop;
           if (forall e <- VCs :: e.Holds()) {
@@ -494,12 +500,15 @@ module VCGenOmni {
 
   method VCGenProc(proc: Procedure) returns (VCs: seq<Expr>) 
     requires proc.Valid()
+    requires proc.IsSafe()
     ensures (forall e <- VCs :: e.Holds()) ==> Omni.ProcedureIsSound(proc)
   {
     var context := mkInitialContext(proc);
     var bcont: Block.Continuation := [Block.Point(proc.PostCheck(), 0)];
     if proc.Body.Some? {
-      VCs := SeqVCGen([proc.Body.value], context, bcont);
+      VCs := SeqVCGen([proc.Body.value], context, bcont) by {
+        proc.IsSafeLemma();
+      }
       if (forall e <- VCs :: e.Holds()) {
         forall st: State | st in proc.PreSet()
           ensures Omni.Sem(proc.Body.value, st, [proc.PostSet()]) {
@@ -535,6 +544,7 @@ module VCGenOmni {
 
   method VCGenProcs(procs: seq<Procedure>) returns (VCs: seq<Expr>)
     requires forall proc <- procs :: proc.Valid()
+    requires forall proc <- procs :: proc.IsSafe()
     requires forall proc <- procs :: proc.ProceduresCalled() <= SetOfSeq(procs)
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
@@ -544,7 +554,9 @@ module VCGenOmni {
     for i := 0 to |procs| 
       invariant (forall e <- VCs :: e.Holds()) ==> forall proc <- procs[..i] :: Omni.ProcedureIsSound(proc)
     {
-      VCs' := VCGenProc(procs[i]);
+      VCs' := VCGenProc(procs[i]) by {
+        assert procs[i] in procs;
+      }
       VCs := VCs + VCs';
     }
     if (forall e <- VCs :: e.Holds()) {
