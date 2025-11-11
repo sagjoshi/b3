@@ -18,10 +18,6 @@ module State {
     case Some(BVal(true)) => true
     case _ => false
   }
-  
-  type Variable = string
-  type Idx = nat
-
 
   newtype State = seq<Val> {
 
