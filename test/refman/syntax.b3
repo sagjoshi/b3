@@ -1,0 +1,55 @@
+// RUN: %b3 verify "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure Comments() {
+  var x: int
+  var y: int
+  var z: int
+// BEGIN Comments
+x := x + 1 // increase x
+/* also increase y and z */
+y := y + 5
+z := z + 3
+// END Comments
+}
+
+function Triple(x: int): int {
+  3 * x
+}
+
+procedure SelfTerminatingTest() {
+  check
+// BEGIN SelfTerminating
+forall x: int
+  pattern Triple(x)
+  Triple(x) ==
+    val twice := 2 * x
+    x + twice
+// END SelfTerminating
+}
+
+// BEGIN DeclarationOrder
+procedure IsEven(x: int, out isEven: bool)
+  requires 0 <= x
+  ensures isEven <==> x mod 2 == 0
+{
+  if x == 0 {
+    isEven := true
+  } else {
+    var oneLessIsOdd: bool
+    IsOdd(x - 1, out oneLessIsOdd) // calls IsOdd, defined below
+    isEven := oneLessIsOdd
+  }
+}
+
+procedure IsOdd(x: int, out isOdd: bool)
+  requires 0 <= x
+  ensures isOdd <==> x mod 2 == 1
+{
+  if x == 0 {
+    isOdd := false
+  } else {
+    IsEven(x - 1, out isOdd) // calls IsEven, defined above
+  }
+}
+// END DeclarationOrder

@@ -1,6 +1,6 @@
 # Motivation
 
-Authoring an automated program verification is a complex task that can be broken up into two
+Authoring an automated program verifier is a complex task that can be broken up into two
 major components with separate concerns. One component is the _front end_, which prescribes the
 proof obligations for any given source program. The other component is the _back end_, which
 uses algorithms that try to discharge these proof obligations. The front end is concerned
@@ -18,7 +18,8 @@ The back end works by turning the proof obligations prescribed by a given IVL pr
 queries posed to one or several SMT solvers (henceforth referred to as just the _solver_).
 
 In the last 25 years, IVLs have been used effectively in dozens of automated program
-verifiers. Widely used IVLs include Boogie, Why3, and Viper. For example, the verifier for the
-Dafny programming language has, since its creation in 2008, used the Boogie 2 IVL and
-tool. This long experience has developed several patterns of prescribing proof obligations that
-are not well supported by Boogie 2.
+verifiers. Widely used IVLs include [Boogie](https://github.com/boogie-org/boogie/),
+[Why3](https://www.why3.org/), and [Viper](https://www.pm.inf.ethz.ch/research/viper.html).
+For example, the verifier for the [Dafny](https://dafny.org) programming language has,
+since its creation in 2008, used the Boogie&nbsp;2 IVL and tool. This long experience has developed
+several patterns of prescribing proof obligations that are not well supported by Boogie&nbsp;2.

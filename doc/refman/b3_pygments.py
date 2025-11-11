@@ -52,8 +52,9 @@ class CustomLexer(RegexLexer):
             (r' ', Text),
             (r'\n', Text),
             (r'\r', Text),
-            (r'//.*\n', Comment),
-            (r'\([*]([^*]|[*]+[^)])*[*]+\)', Comment),
+            # the following will only syntax-highlight non-nested comments correctly
+            (r'//[^\n]*', Comment),
+            (r'/\*([^*]|\*(?!/))*\*/', Comment),
             (words(b3_keywords, suffix=r'\b'), Keyword),
             (words(b3_types, suffix=r'\b'), Keyword.Type),
             (words(b3_modifier, suffix=r'\b'), Keyword.Reserved),
