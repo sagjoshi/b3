@@ -1,0 +1,113 @@
+// RUN: %b3 verify "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+// BEGIN Double
+function Double(x: int): int {
+  x + x
+}
+// END Double
+
+// BEGIN DoubleAxiom
+axiom explains Double
+  forall x: int
+    pattern Double(x)
+    Double(x) == x + x
+// END DoubleAxiom
+
+// BEGIN Underspecification
+function Decrease(x: int): int
+  when 0 < x
+{
+  x - 1
+}
+// END Underspecification
+
+// BEGIN UnderspecificationAxiom
+axiom explains Decrease
+  forall x: int
+    pattern Decrease(x)
+    0 < x ==>
+    Decrease(x) == x - 1
+// END UnderspecificationAxiom
+
+type GPSPoint
+type string
+
+// BEGIN Injective
+function MapCoordinate(injective x: int, injective y: int, label: string): GPSPoint
+// END Injective
+
+procedure TestInjective() {
+
+// BEGIN InjectivityConsequences
+var a := MapCoordinate(59, 18, |Stockholm: string|)
+var b := MapCoordinate(48, -122, |Seattle: string|)
+var c := MapCoordinate(48, -122, |EmeraldCity: string|)
+
+check a != b // yes, follows from injectivity
+
+check b == c // don't know
+check b != c // don't know
+// END InjectivityConsequences
+}
+
+// BEGIN ManualInjectivity
+axiom explains MapCoordinate
+  forall x0: int, y0: int, label0: string, x1: int, y1: int, label1: string
+    pattern MapCoordinate(x0, y0, label0), MapCoordinate(x1, y1, label1)
+    MapCoordinate(x0, y0, label0) == MapCoordinate(x1, y1, label1)
+    ==>
+    x0 == x1 && y0 == y1
+// END ManualInjectivity
+
+// BEGIN Tagger
+type Drink
+tagger Variety for Drink
+
+function Coffee(strength: int): Drink tag Variety
+function Tea(organic: bool): Drink tag Variety
+function SoftDrink(hasSugar: bool): Drink tag Variety
+// END Tagger
+
+procedure TestTagValues() {
+  check
+// BEGIN TagsAreDifferent
+Coffee..tag() != Tea..tag()
+// END TagsAreDifferent
+}
+
+// BEGIN TagAxiom
+axiom explains Coffee
+  forall strength: int
+    pattern Coffee(strength)
+    Variety(Coffee(strength)) == Coffee..tag()
+// END TagAxiom
+
+// BEGIN Datatype
+type List
+tagger ListTagger for List
+
+function Nil(): List tag ListTagger
+function Cons(injective head: int, injective tail: List): List tag ListTagger
+// END Datatype
+
+// BEGIN InconsistentFunction
+function Bad(x: int): int {
+  1 + Bad(x)
+}
+// END InconsistentFunction
+
+// BEGIN InconsistentFunctionMarkup
+function G(injective x: int): int { 5 }
+// END InconsistentFunctionMarkup
+
+procedure TestInconsistentFunctionMarkup() {
+  assert
+// BEGIN InconsistentFunctionMarkupTest
+G..x(G(20)) == 20 &&
+G..x(G(21)) == 21 &&
+G(20) == G(21)
+// END InconsistentFunctionMarkupTest
+  // Now, we can prove false
+  check false
+}

@@ -1,6 +1,8 @@
 from pygments.lexer import RegexLexer, words
 from pygments.token import *
 
+# Note, these reserved words are duplicated in doc/refman/_static/inline-highlight.js
+
 b3_keywords = (
     # top-level declarations
     'type',
