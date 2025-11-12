@@ -128,7 +128,7 @@ module Expr {
 
     ghost function Eval(s: State): M.Any
       requires IsDefinedOn(|s|)
-      reads *
+      // reads *
     {
       match this
       case BConst(bvalue)  => M.InterpBool(bvalue)
@@ -187,7 +187,7 @@ module Expr {
             }
         else M.Bot
       case FunctionCallExpr(func, args) => 
-        var args := seq(|args|, (i: nat) requires i < |args| reads * => 
+        var args := seq(|args|, (i: nat) requires i < |args| => 
           SeqExprDepthLemma(args, args[i]);
           args[i].Eval(s));
         // if func.IsUninterpreted() then
@@ -212,7 +212,7 @@ module Expr {
 
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
-      reads *
+      // reads *
     {
       Eval(s) == M.True
     }
@@ -233,18 +233,18 @@ module Expr {
       match this
       case QuantifierExpr(true, v, tp, body) => 
       case QuantifierExpr(false, v, tp, body) => 
-      case FunctionCallExpr(func, args) => assume false;
+      case FunctionCallExpr(func, args) => 
       case _ =>
     } 
 
     ghost predicate Holds() 
-      reads *
+      // reads *
     {
       forall s: State :: IsDefinedOn(|s|) ==> HoldsOn(s)
     }
 
     ghost function Sem(): iset<State> 
-      reads *
+      // reads *
     { 
       iset st: State | IsDefinedOn(|st|) && HoldsOn(st) 
     }

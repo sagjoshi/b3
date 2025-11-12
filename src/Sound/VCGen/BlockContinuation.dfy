@@ -1,4 +1,4 @@
-module Block' {
+module Block {
   import opened Utils
   import opened Model
   import opened AST
@@ -8,6 +8,9 @@ module Block' {
 
   newtype Continuation = seq<Point> {
 
+    predicate ValidCalls() {
+      forall p <- this :: SeqValidCalls(p.cont)
+    }
 
     function Update(cont: seq<Stmt>, varsInScope: nat): Continuation {
       [Point(cont, varsInScope)] + this

@@ -5,15 +5,15 @@ module AST {
   import opened State
   import opened Expr
 
-    datatype Stmt_ =
+    datatype Stmt =
     | Check(e: Expr)
     | Assume(e: Expr)
-    | Seq(ss: seq<Stmt_>)
+    | Seq(ss: seq<Stmt>)
     | Assign(lhs: Idx, rhs: Expr)
-    | NewScope(n: nat, s: Stmt_)
+    | NewScope(n: nat, s: Stmt)
     | Escape(l: nat)
-    | Choice(0: Stmt_, 1: Stmt_)
-    | Loop(inv: Expr, body: Stmt_)
+    | Choice(0: Stmt, 1: Stmt)
+    | Loop(inv: Expr, body: Stmt)
     | Call(proc: Procedure, args: CallArguments)
   {
 
@@ -122,13 +122,15 @@ module AST {
     {  }
   }
 
-  type Stmt = s: Stmt_ | s.ValidCalls() witness Seq([])
+  predicate SeqValidCalls(ss: seq<Stmt>) {
+    forall s <- ss :: s.ValidCalls()
+  }
 
-  function SeqProceduresCalled(ss: seq<Stmt_>): set<Procedure> {
+  function SeqProceduresCalled(ss: seq<Stmt>): set<Procedure> {
     if ss == [] then {} else ss[0].ProceduresCalled() + SeqProceduresCalled(ss[1..])
   }
 
-  lemma SeqProceduresCalledLemma(ss: seq<Stmt_>, s: Stmt_, proc: Procedure)
+  lemma SeqProceduresCalledLemma(ss: seq<Stmt>, s: Stmt, proc: Procedure)
     requires s in ss
     requires proc in s.ProceduresCalled()
     ensures proc in SeqProceduresCalled(ss)
@@ -136,7 +138,7 @@ module AST {
 
   }
 
-  predicate SeqImmutableVarsIdx(ss: seq<Stmt_>, vars: set<Idx>, i: Idx)
+  predicate SeqImmutableVarsIdx(ss: seq<Stmt>, vars: set<Idx>, i: Idx)
   {
     if ss == [] then true else
     ss[0].ImmutableVarsIdx(vars, i) && SeqImmutableVarsIdx(ss[1..], vars, i)
@@ -303,7 +305,7 @@ module AST {
 
 
     ghost predicate InPreSet(st: State) 
-      reads *
+      // reads *
     {
       && |Parameters| + NumInOutArgs() == |st|
       && (forall i: nat :: i < NumInOutArgs() ==> 
@@ -313,25 +315,26 @@ module AST {
     }
 
     ghost function PreSet(): iset<State> 
-      reads *
+      // reads *
     {
       iset st: State | InPreSet(st)
     }
 
     ghost predicate InPostSet(st: State) 
-      reads *
+      // reads *
     {
       forall e <- Post :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
     }
 
     ghost function PostSet(): iset<State> 
-      reads *
+      // reads *
     {
       iset st': State | InPostSet(st')
     }
 
     function PostCheck'(p: seq<Expr>): seq<Stmt> 
       requires forall e <- p :: e.IsDefinedOn(|Parameters| + NumInOutArgs())
+      ensures SeqValidCalls(PostCheck'(p))
       ensures SeqIsDefinedOn(PostCheck'(p), |Parameters| + NumInOutArgs())
       ensures SeqJumpsDefinedOn(PostCheck'(p), 0)
     {
@@ -345,6 +348,7 @@ module AST {
 
     function PostCheck(): seq<Stmt> 
       requires Valid()
+      ensures SeqValidCalls(PostCheck())
       ensures SeqIsDefinedOn(PostCheck(), |Parameters| + NumInOutArgs())
       reads this`Body
     {
@@ -390,7 +394,7 @@ module AST {
       reads this`Body
     {
       var body := Body.value;
-      // && body.ValidCalls()
+      && body.ValidCalls()
       && body.IsDefinedOn(|Parameters| + NumInOutArgs())
       && body.JumpsDefinedOn(0)
       && body.ImmutableVars(OldVars())
@@ -418,7 +422,7 @@ module AST {
 
   }
 
-  function SeqSize(ss: seq<Stmt_>): nat {
+  function SeqSize(ss: seq<Stmt>): nat {
     if ss == [] then 0 else ss[0].Size() + SeqSize(ss[1..])
   }
 
@@ -427,17 +431,20 @@ module AST {
     ensures SeqSize(ss) == ss[0].Size() + SeqSize(ss[1..])
   {  }
 
-  function SeqDepth(ss: seq<Stmt>): nat {
+  function SeqDepth(ss: seq<Stmt>): nat 
+    requires SeqValidCalls(ss)
+  {
     if ss == [] then 0 else max(ss[0].Depth(), SeqDepth(ss[1..]))
   }
 
   predicate SeqIsDefinedOn(ss: seq<Stmt>, d: nat) 
+    requires SeqValidCalls(ss)
     ensures SeqIsDefinedOn(ss, d) <==> SeqDepth(ss) <= d
   {
     if ss == [] then true else ss[0].IsDefinedOn(d) && SeqIsDefinedOn(ss[1..], d)
   }
 
-  function SeqJumpDepth(ss: seq<Stmt_>): nat {
+  function SeqJumpDepth(ss: seq<Stmt>): nat {
     if ss == [] then 0 else max(ss[0].JumpDepth(), SeqJumpDepth(ss[1..]))
   }
 
@@ -448,6 +455,8 @@ module AST {
   }
 
   lemma SeqFunConcatLemmas(ss1: seq<Stmt>, ss2: seq<Stmt>)
+    requires SeqValidCalls(ss1)
+    requires SeqValidCalls(ss2)
     ensures SeqSize(ss1 + ss2) == SeqSize(ss1) + SeqSize(ss2)
     ensures SeqDepth(ss1 + ss2) == max(SeqDepth(ss1), SeqDepth(ss2))
     ensures SeqJumpDepth(ss1 + ss2) == max(SeqJumpDepth(ss1), SeqJumpDepth(ss2))

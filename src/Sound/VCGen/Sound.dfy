@@ -1,15 +1,16 @@
-module VCGenOmni' {
+module VCGenOmni {
   import opened Utils
   import M = Model
   import opened AST
   import opened State
-  import opened Context'
+  import opened Context
   import opened Expr
-  import Block'
+  import Block
   import Omni
   import AssignmentTarget'
 
   method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
+    requires s.ValidCalls()
     requires s.IsDefinedOn(|context_in.incarnation|)
     requires s.Single()
     ensures |context_in.incarnation| <= |context.incarnation|
@@ -181,7 +182,7 @@ module VCGenOmni' {
       }
   }
 
-  ghost function BlockWPSeq(bcont: Block'.Continuation, post: iset<State>) : Omni.Continuation
+  ghost function BlockWPSeq(bcont: Block.Continuation, post: iset<State>) : Omni.Continuation
     ensures |BlockWPSeq(bcont, post)| == |bcont| + 1
     // reads *
   {
@@ -194,7 +195,7 @@ module VCGenOmni' {
       wpSeq.UpdateAndAdd(bcont[0].varsInScope) 
   }
 
-  lemma BlockWPSeqIdx(bcont: Block'.Continuation, l: nat)
+  lemma BlockWPSeqIdx(bcont: Block.Continuation, l: nat)
     requires l < |bcont|
     ensures BlockWPSeq(bcont, AllStates)[l + 1] == UpdateSet(bcont.VarsInScope(l), BlockWPSeq(bcont[l..], AllStates)[0])
   {
@@ -232,21 +233,22 @@ module VCGenOmni' {
     }
   }
 
-  ghost predicate BlockSem(s: seq<Stmt>, bcont: Block'.Continuation, st: State, post: iset<State>) 
+  ghost predicate BlockSem(s: seq<Stmt>, bcont: Block.Continuation, st: State, post: iset<State>) 
     // reads *
   {
     Omni.SeqSem(s, st, BlockWPSeq(bcont, post))
   }
 
-  lemma BlockLastPost(bcont: Block'.Continuation, st: State)  
+  lemma BlockLastPost(bcont: Block.Continuation, st: State)  
     requires |bcont| > 0
-    requires bcont[|bcont| - 1] == Block'.Point([], 0) 
+    requires bcont[|bcont| - 1] == Block.Point([], 0) 
     ensures st in BlockWPSeq(bcont, AllStates)[|bcont|]
   {
     BlockWPSeqIdx(bcont, |bcont| - 1);
   }
 
   lemma IsDefinedLoop(inv: Expr, body: Stmt, n: nat, k: nat)
+    requires body.ValidCalls()
     requires Loop(inv, body).IsDefinedOn(n)
     requires Loop(inv, body).JumpsDefinedOn(k)
     ensures SeqIsDefinedOn([Assume(inv), body, Check(inv), Assume(BConst(false))], n)
@@ -262,7 +264,9 @@ module VCGenOmni' {
     assert [Assume(BConst(false))][1..] == [];
   }
 
-  method SeqVCGen(s: seq<Stmt>, context: Context, bcont: Block'.Continuation) returns (VCs: seq<Expr>) 
+  method SeqVCGen(s: seq<Stmt>, context: Context, bcont: Block.Continuation) returns (VCs: seq<Expr>) 
+    requires SeqValidCalls(s)
+    requires bcont.ValidCalls()
     requires bcont.IsDefinedOn(|context.incarnation|)
 
     requires SeqIsDefinedOn(s, |context.incarnation|)
@@ -316,6 +320,7 @@ module VCGenOmni' {
         match stmt 
         case Seq(ss) =>
           VCs := SeqVCGen(ss + cont, context, bcont) by {
+            assert Seq(ss).ValidCalls();
             // decreases
             SeqFunConcatLemmas(ss, cont);
           }
@@ -326,8 +331,12 @@ module VCGenOmni' {
             }
           }
         case Choice(ss0, ss1) =>
-          var VCs0 := SeqVCGen([ss0] + cont, context, bcont);
-          var VCs1 := SeqVCGen([ss1] + cont, context, bcont);
+          var VCs0 := SeqVCGen([ss0] + cont, context, bcont) by {
+            assert Choice(ss0, ss1).ValidCalls();
+          }
+          var VCs1 := SeqVCGen([ss1] + cont, context, bcont) by {
+            assert Choice(ss0, ss1).ValidCalls();
+          }
           VCs := VCs0 + VCs1;
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
@@ -339,6 +348,8 @@ module VCGenOmni' {
             // decreases
             bcont.UpdateSize(cont, n);
             assert SeqSize([body]) == body.Size();
+            // ValidCalls
+            assert NewScope(n, body).ValidCalls();
           }
           if (forall e <- VCs :: e.Holds()) {
             forall st: State | context.IsSatisfiedOn(st) 
@@ -430,6 +441,8 @@ module VCGenOmni' {
             == 
               1 + body.Size() + 1 + 1 + SeqSize([]);
             }
+            // ValidCalls
+            assert Loop(inv, body).ValidCalls();
             // IsDefinedOn
             IsDefinedLoop(inv, body, |context'.incarnation|, |bcont|);
           }
@@ -478,7 +491,7 @@ module VCGenOmni' {
     ensures (forall e <- VCs :: e.Holds()) ==> Omni.ProcedureIsSound(proc)
   {
     var context := mkInitialContext(proc);
-    var bcont: Block'.Continuation := [Block'.Point(proc.PostCheck(), 0)];
+    var bcont: Block.Continuation := [Block.Point(proc.PostCheck(), 0)];
     if proc.Body.Some? {
       VCs := SeqVCGen([proc.Body.value], context, bcont);
       if (forall e <- VCs :: e.Holds()) {
@@ -516,7 +529,6 @@ module VCGenOmni' {
 
   method VCGenProcs(procs: seq<Procedure>) returns (VCs: seq<Expr>)
     requires forall proc <- procs :: proc.Valid()
-    // requires forall proc <- procs :: proc.IsSafe()
     requires forall proc <- procs :: proc.ProceduresCalled() <= SetOfSeq(procs)
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)

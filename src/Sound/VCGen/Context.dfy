@@ -9,9 +9,9 @@ module Context' {
     ctx: seq<Expr>,
     incarnation: seq<nat>) 
   {
-    ghost function Models() : iset<State> reads * { iset st: State | IsSatisfiedOn(st) }
+    ghost function Models() : iset<State> { iset st: State | IsSatisfiedOn(st) }
 
-    ghost function AdjustedModels() : iset<State> reads * { 
+    ghost function AdjustedModels() : iset<State> { 
       iset st: State | exists st' <- Models() {:InAdjustedModelsLemma(st')} :: AdjustState(st') == st
     }
 
@@ -340,7 +340,7 @@ module Context' {
     }
 
     ghost predicate IsSatisfiedOn(s: State) 
-      reads *
+      // reads *
     {
         && IsDefinedOn(|s|)
         && (forall i <- incarnation :: i < |s|)
@@ -348,7 +348,7 @@ module Context' {
     }
 
     ghost predicate Entails(e: Expr) 
-      reads *
+      // reads *
     {
       forall s: State ::  
         e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> e.HoldsOn(s)
@@ -422,11 +422,11 @@ module Context' {
             args[j].Eval(s[..i] + AdjustState(s[i..])) == SubstituteIdx(args[j], i).Eval(s)) {
         }
         var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
-        var args' := seq(|ss|, (j: nat) requires j < |ss| reads * => 
+        var args' := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
           SeqExprDepthLemma(args, args[j]);
           SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
           args[j].Eval(s[..i] + AdjustState(s[i..])));
-        var argsSubst := seq(|ss|, (j: nat) requires j < |ss| reads * => 
+        var argsSubst := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
           SeqExprDepthLemma(args, args[j]);
           SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
           ss[j].Eval(s));

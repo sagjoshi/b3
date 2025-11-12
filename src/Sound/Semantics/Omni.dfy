@@ -140,7 +140,7 @@ module Omni {
 
   ghost predicate SemSingle(s: Stmt, st: State, post: iset<State>) 
     requires s.Single()
-    reads *
+    // reads *
   {
     match s
     case Check(e)       => 
@@ -165,14 +165,14 @@ module Omni {
   }
 
   ghost predicate PreservesInv(inv: iset<State>, body: Stmt, posts: Continuation)
-    reads *
+    // reads *
   { 
     forall st': State :: 
       st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
   }
 
   ghost predicate Sem(s: Stmt, st: State, posts: Continuation) 
-    reads *
+    // reads *
   {
     if s.Single() then SemSingle(s, st, posts.head) else
     match s
@@ -251,7 +251,7 @@ module Omni {
   }
 
   ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) 
-    reads *
+    // reads *
   {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
@@ -259,7 +259,7 @@ module Omni {
   }
 
   ghost function SeqWP(ss: seq<Stmt>, cont: Continuation): iset<State> 
-    reads *
+    // reads *
   {
     iset st: State | SeqSem(ss, st, cont)
   }
