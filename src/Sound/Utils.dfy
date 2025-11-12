@@ -2,14 +2,8 @@ module Utils {
 
   import opened Std.Wrappers
 
-  type Type = string
-  const Int : Type := "int"
-  const Bool : Type := "bool"
-  type Literal = string
   type Variable = string
   type Idx = nat
-  datatype TIdx = TIdx(idx: Idx, typ: Type)
-
 
   function Index<T(==)>(ss: seq<T>, e: T): nat
     requires e in ss

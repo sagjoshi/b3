@@ -120,11 +120,11 @@ module TypeChecker {
       && (forall arg <- args :: TypeCorrectExpr(arg))
       && match op {
           case IfThenElse =>
-            args[0].HasType(BoolType) && args[1].ExprType() == args[2].ExprType()
+            args[0].HasType(BoolType) && args[1].Type() == args[2].Type()
           case Equiv | LogicalImp | LogicalAnd | LogicalOr =>
             args[0].HasType(BoolType) && args[1].HasType(BoolType)
           case Eq | Neq =>
-            args[0].ExprType() == args[1].ExprType()
+            args[0].Type() == args[1].Type()
           case Less | AtMost | Plus | Minus | Times | Div | Mod =>
             args[0].HasType(IntType) && args[1].HasType(IntType)
           case LogicalNot =>

@@ -1,10 +1,11 @@
 module Omni {
   import opened Utils
-  import opened AST
   import opened State
+  import opened Model
   import opened Expr
+  import opened AST
   export
-    provides Utils, AST, State, Expr,
+    provides Utils, AST, State, Model, Expr,
       SeqLemma, SemNest, SemCons, SeqSemCons, SeqSemSingle, 
       RefSem, SeqRefSem, SemSoundProcs, SingleCont,
       SemLoopWithCont, InvSem,
@@ -139,6 +140,7 @@ module Omni {
 
   ghost predicate SemSingle(s: Stmt, st: State, post: iset<State>) 
     requires s.Single()
+    reads *
   {
     match s
     case Check(e)       => 
@@ -150,8 +152,7 @@ module Omni {
     case Assign(x, v)   =>
         && x < |st|
         && v.IsDefinedOn(|st|)
-        && v.Eval(st).Some?
-        && st[x := v.Eval(st).value] in post
+        && st[x := v.Eval(st)] in post
     case Call(proc, args) =>
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
@@ -164,12 +165,15 @@ module Omni {
   }
 
   ghost predicate PreservesInv(inv: iset<State>, body: Stmt, posts: Continuation)
+    reads *
   { 
     forall st': State :: 
       st' in inv ==> Sem(body, st', posts.UpdateHead(inv))
   }
 
-  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) {
+  ghost predicate Sem(s: Stmt, st: State, posts: Continuation) 
+    reads *
+  {
     if s.Single() then SemSingle(s, st, posts.head) else
     match s
     case Seq(ss)        => SeqSem(ss, st, posts)
@@ -193,13 +197,11 @@ module Omni {
       && (e.HoldsOn(st) &&  st in posts.head)
     case Assume(e)      => 
       && e.IsDefinedOn(|st|) 
-      // e.Eval(st).SomeBVal?
       && (e.HoldsOn(st) ==> st in posts.head)
     case Assign(x, v)   => 
       && x < |st|
       && v.IsDefinedOn(|st|) 
-      && v.Eval(st).Some?
-      && st[x := v.Eval(st).value] in posts.head
+      && st[x := v.Eval(st)] in posts.head
     case Call(proc, args) => 
       && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)
@@ -235,24 +237,30 @@ module Omni {
   }
 
   ghost predicate ProcedureIsSound(proc: Procedure) 
-    reads proc`Body
+    reads *
   {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet() ==>
         Sem(proc.Body.value, st, [proc.PostSet()])
   }
  
-  ghost function WP(s: Stmt, posts: Continuation) : iset<State> {
+  ghost function WP(s: Stmt, posts: Continuation) : iset<State> 
+    reads *
+  {
     iset st: State | Sem(s, st, posts)
   }
 
-  ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) {
+  ghost predicate SeqSem(ss: seq<Stmt>, st: State, posts: Continuation) 
+    reads *
+  {
     if ss == [] then st in posts.head else
     forall post': iset<State> :: 
       (forall st: State :: SeqSem(ss[1..], st, posts) ==> st in post') ==> Sem(ss[0], st, posts.UpdateHead(post'))
   }
 
-  ghost function SeqWP(ss: seq<Stmt>, cont: Continuation): iset<State> {
+  ghost function SeqWP(ss: seq<Stmt>, cont: Continuation): iset<State> 
+    reads *
+  {
     iset st: State | SeqSem(ss, st, cont)
   }
 

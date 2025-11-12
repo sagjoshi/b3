@@ -208,7 +208,7 @@ module Verifier {
       Process(cont, incarnations', context, B0, smtEngine);
     case Probe(e) =>
       var rExpr := incarnations.REval(e);
-      context := RSolvers.Record(context, rExpr, incarnations.Type2SType(e.ExprType()));
+      context := RSolvers.Record(context, rExpr, incarnations.Type2SType(e.Type()));
       Process(cont, incarnations, context, B, smtEngine);
   }
 

@@ -467,7 +467,7 @@ module Resolver {
             if i == None {
               return Failure("variable declaration must give a type or an initializing expression (or both)");
             }
-            typ := i.value.ExprType();
+            typ := i.value.Type();
           case Some(typeName) =>
             typ :- ResolveType(typeName, prs.ers.typeMap);
         }
@@ -716,7 +716,7 @@ module Resolver {
         var typ;
         match optionalTypeName {
           case None =>
-            typ := rRhs.ExprType();
+            typ := rRhs.Type();
           case Some(typeName) =>
             typ :- ResolveType(typeName, ers.typeMap);
         }

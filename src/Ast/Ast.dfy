@@ -19,7 +19,7 @@ module Ast {
     provides Parameter.mode, Parameter.oldInOut
     provides Label.Name
     reveals Stmt.IsPredicateStmt
-    reveals Expr.ExprType, Expr.HasType
+    reveals Expr.Type, Expr.HasType
     provides Expr.ToString
     provides Expr.CreateTrue, Expr.CreateFalse, Expr.CreateNegation, Expr.CreateLet, Expr.CreateForall
     provides Expr.CreateAnd, Expr.CreateBigAnd, Expr.CreateOr, Expr.CreateBigOr
@@ -307,7 +307,7 @@ module Ast {
     | LetExpr(v: Variable, rhs: Expr, body: Expr)
     | QuantifierExpr(univ: bool, v: Variable, patterns: seq<Pattern>, body: Expr)
   {
-    function ExprType(): Type {
+    function Type(): Type {
       match this
       case BLiteral(_) => Types.BoolType
       case ILiteral(_) => Types.IntType
@@ -316,7 +316,7 @@ module Ast {
       case OperatorExpr(op, args) =>
         match op {
           case IfThenElse =>
-            if op.ArgumentCount() == |args| then args[1].ExprType() else Types.BoolType // TODO: Rather than an `else` branch, use a WellFormed precondition
+            if op.ArgumentCount() == |args| then args[1].Type() else Types.BoolType // TODO: Rather than an `else` branch, use a WellFormed precondition
           case Equiv | LogicalImp | LogicalAnd | LogicalOr | LogicalNot =>
             Types.BoolType
           case Eq | Neq | Less | AtMost =>
@@ -325,13 +325,13 @@ module Ast {
             Types.IntType
         }
       case FunctionCallExpr(func, args) => func.ResultType
-      case LabeledExpr(_, body) => body.ExprType()
-      case LetExpr(_, _, body) => body.ExprType()
+      case LabeledExpr(_, body) => body.Type()
+      case LetExpr(_, _, body) => body.Type()
       case QuantifierExpr(_, _, _, _) => Types.BoolType
     }
 
     predicate HasType(typ: Type) {
-      ExprType() == typ
+      Type() == typ
     }
 
     predicate WellFormed() {

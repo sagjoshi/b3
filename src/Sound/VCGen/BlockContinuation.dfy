@@ -1,5 +1,6 @@
-module Block {
+module Block' {
   import opened Utils
+  import opened Model
   import opened AST
   import opened State
 
@@ -7,9 +8,6 @@ module Block {
 
   newtype Continuation = seq<Point> {
 
-    ghost predicate IsSafe() {
-      forall point <- this :: SeqIsSafe(point.cont)
-    }
 
     function Update(cont: seq<Stmt>, varsInScope: nat): Continuation {
       [Point(cont, varsInScope)] + this

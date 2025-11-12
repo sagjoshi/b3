@@ -1,11 +1,12 @@
-module AssignmentTarget {
+module AssignmentTarget' {
   import opened Utils
   import opened AST
   import opened State
+  import opened Model
   import Omni
 
   export
-    provides Utils, AST, State, Omni, Process, Correct
+    provides Utils, AST, State, Model, Omni, Process, Correct
     reveals PairToSet
   
   newtype VarsJumps = map<nat, set<Idx>> {
