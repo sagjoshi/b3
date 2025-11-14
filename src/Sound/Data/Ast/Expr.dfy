@@ -260,6 +260,12 @@ module Expr {
       M.Function(Name, seq(|Parameters|, (i: nat) requires i < |Parameters| => Parameters[i].typ.ToType()), ResultType.ToType())
     }
 
+    function EvalArgs(args: seq<M.Any>): Option<M.Any> {
+      if ArgsCompatibleWith(args) then 
+        Some(M.InterpFunctionOn(ToFunction(), args)) 
+      else None
+    }
+
     greatest predicate RefEval(args: seq<M.Any>, outs: iset<M.Any>)
       reads *
     {
@@ -313,9 +319,7 @@ module Expr {
         op.Eval(args)
       case FunctionCallExpr(func, args) => 
         var args :- SeqEval(args, s);
-          if func.ArgsCompatibleWith(args) then
-            Some(M.InterpFunctionOn(func.ToFunction(), args))
-          else None
+        func.EvalArgs(args)
       case QuantifierExpr(true, v, typ, body) =>
         Some(M.InterpBool(forall x: M.Any | M.HasType(x, typ.ToType()) :: 
           body.Eval(s.Update([x])) == Some(M.True)
