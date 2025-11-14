@@ -2,17 +2,17 @@ module Model {
   import opened Utils
   export
     provides Utils,
-      Bot, InterpLiteral, InferType,
+      InterpLiteral, InferType, Bot,
       InterpInt, InterpBool, ToInt, ToBool,
       Not, Equiv, Or, Negate, Plus, Minus, Times, Div, Mod, Less, 
-      AtMost, NoEmptyTypes, BoolNotBot, InterpFunctionOn
-    reveals Any, True, False, And, IsBool, IsInt, HasType, Implies, 
-      Literal, FunctionSig, Function, Type, Int, Bool, BotType, 
+      AtMost, NoEmptyTypes, InterpFunctionOn
+    reveals Any, True, False, LogicAnd, IsBool, IsInt, HasType, Implies, 
+      Literal, FunctionSig, Function, Type, Int, Bool, 
       HaveTypes
+
   type Type = string
   const Int : Type := "int"
   const Bool : Type := "bool"
-  const BotType : Type := "bot"
   datatype Literal = Literal(value: string, typ: Type)
   type FunctionSig = seq<Type>
   datatype Function = Function(name: string, sig: FunctionSig, resultType: Type)
@@ -21,22 +21,10 @@ module Model {
 
   type Any(!new, ==)
 
-  function getBot(): Any
-
-  const Bot: Any := getBot()
+  function {:axiom} Bot(): Any
 
   function {:axiom} InferType(x: Any): Type
   
-  lemma {:axiom} BotTypeLemma(x: Any)
-    ensures InferType(x) == BotType <==> x == Bot
-
-  lemma BoolNotBot(x: Any)
-    requires IsBool(x)
-    ensures x != Bot
-  {
-    BotTypeLemma(x);
-  }
-
   predicate HasType(x: Any, typ: Type) {
     InferType(x) == typ
   }
@@ -78,7 +66,7 @@ module Model {
     InterpBool(!ToBool(x))
   }
 
-  function And(x: Any, y: Any): Any
+  function LogicAnd(x: Any, y: Any): Any
     requires IsBool(x) 
     requires IsBool(y)
   {

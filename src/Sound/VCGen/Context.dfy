@@ -1,4 +1,4 @@
-module Context' {
+module Context {
   import opened Utils
   import M = Model
   import opened AST
@@ -48,7 +48,6 @@ module Context' {
 
     function SubstituteIdx(e: Expr, i: Idx): Expr
       requires e.IsDefinedOn(|incarnation| + i)
-      decreases e
     {
       match e
       case BConst(bvalue) => e
@@ -59,13 +58,20 @@ module Context' {
           BVar(incarnation[v - i] + i) 
         else e
       case OperatorExpr(op, args) =>
-        OperatorExpr(op, seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i)))
+        OperatorExpr(op, SeqSubstituteIdx(args, i))
       case FunctionCallExpr(func, args) =>
-        FunctionCallExpr(func, seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i)))
+        FunctionCallExpr(func, SeqSubstituteIdx(args, i))
       case LetExpr(v, rhs, body) =>
         LetExpr(v, SubstituteIdx(rhs, i), SubstituteIdx(body, i + 1))
       case QuantifierExpr(univ, v, tp, body) =>
         QuantifierExpr(univ, v, tp, SubstituteIdx(body, i + 1))
+    }
+
+    function SeqSubstituteIdx(ss: seq<Expr>, i: Idx): seq<Expr>
+      requires SeqExprDepth(ss) <= |incarnation| + i
+    {
+      if ss == [] then [] else
+      [SubstituteIdx(ss[0], i)] + SeqSubstituteIdx(ss[1..], i)
     }
 
     function Substitute(e: Expr): Expr
@@ -365,17 +371,29 @@ module Context' {
       match e 
       case BVar(v) => if v >= i { assert incarnation[v - i] in incarnation; }
       case OperatorExpr(op, args) => 
-        var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
-        SeqExprDepthLemma'(ss, d);
+        SeqSubstituteIdxIsDefinedOnLemma(args, i, d);
       case QuantifierExpr(univ, v, tp, body) =>
         SubstituteIdxIsDefinedOnLemma(body, i + 1, d + 1);
       case FunctionCallExpr(func, args) =>
-        var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
-        SeqExprDepthLemma'(ss, d);
+        SeqSubstituteIdxIsDefinedOnLemma(args, i, d);
       case LetExpr(v, rhs, body) =>
         SubstituteIdxIsDefinedOnLemma(rhs, i, d);
         SubstituteIdxIsDefinedOnLemma(body, i + 1, d + 1);
       case _ =>
+    }
+
+    lemma SeqSubstituteIdxIsDefinedOnLemma(ss: seq<Expr>, i: Idx, d: Idx)
+      requires SeqExprDepth(ss) <= |incarnation| + i
+      requires forall ic <- incarnation :: ic + i < d
+      requires i <= d
+      ensures forall e <- SeqSubstituteIdx(ss, i) :: e.IsDefinedOn(d)
+      ensures SeqExprDepth(SeqSubstituteIdx(ss, i)) <= d
+      decreases ss
+    {
+      if ss != [] {
+        SubstituteIdxIsDefinedOnLemma(ss[0], i, d);
+        SeqSubstituteIdxIsDefinedOnLemma(ss[1..], i, d);
+      }
     }
 
     // lemma SubstituteIdxIsDefinedOnLemmaOperator
@@ -404,6 +422,23 @@ module Context' {
       ensures (exists b: M.Any | M.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]))) == (exists b: M.Any | M.HasType(b, tp) :: e2.HoldsOn(s2.Update([b])))
     {  }
 
+    lemma SeqAdjustStateSubstituteIdxLemma(ss: seq<Expr>, s: State, i: Idx)
+      requires SeqExprDepth(ss) <= |incarnation| + i
+      requires forall ic <- incarnation :: ic + i < |s|
+      requires i <= |s|
+      ensures
+        (SeqSubstituteIdxIsDefinedOnLemma(ss, i, |s|);
+         SeqEval(ss, s[..i] + AdjustState(s[i..])) == SeqEval(SeqSubstituteIdx(ss, i), s))
+      decreases ss
+    {
+      if ss != [] {
+        SeqAdjustStateSubstituteIdxLemma(ss[1..], s, i);
+        SeqSubstituteIdxIsDefinedOnLemma(ss, i, |s|);
+        AdjustStateSubstituteIdxLemma(s, ss[0], i);
+      }
+    }
+
+
     lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx)
       requires e.IsDefinedOn(|incarnation| + i)
       requires forall ic <- incarnation :: ic + i < |s|
@@ -413,38 +448,40 @@ module Context' {
       decreases e
     {
       match e 
-      case OperatorExpr(op, args) =>
-      case FunctionCallExpr(func, args) =>
-        forall j: nat | j < |args|
-          ensures 
-            (SeqExprDepthLemma(args, args[j]);
-            SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-            args[j].Eval(s[..i] + AdjustState(s[i..])) == SubstituteIdx(args[j], i).Eval(s)) {
-        }
-        var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
-        var args' := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
-          SeqExprDepthLemma(args, args[j]);
-          SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-          args[j].Eval(s[..i] + AdjustState(s[i..])));
-        var argsSubst := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
-          SeqExprDepthLemma(args, args[j]);
-          SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-          ss[j].Eval(s));
-        var funcSubst := FunctionCallExpr(func, ss);
+      case OperatorExpr(op, args) => 
+        SeqAdjustStateSubstituteIdxLemma(args, s, i);
+      case FunctionCallExpr(func, args) => 
+        SeqAdjustStateSubstituteIdxLemma(args, s, i);
+        // forall j: nat | j < |args|
+        //   ensures 
+        //     (SeqExprDepthLemma(args, args[j]);
+        //     SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
+        //     args[j].Eval(s[..i] + AdjustState(s[i..])) == SubstituteIdx(args[j], i).Eval(s)) {
+        // }
+        // var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
+        // var args' := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
+        //   SeqExprDepthLemma(args, args[j]);
+        //   SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
+        //   args[j].Eval(s[..i] + AdjustState(s[i..])));
+        // var argsSubst := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
+        //   SeqExprDepthLemma(args, args[j]);
+        //   SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
+        //   ss[j].Eval(s));
+        // var funcSubst := FunctionCallExpr(func, ss);
         
-        if func.ArgsCompatibleWith(args') {
-          calc {
-            e.Eval(s[..i] + AdjustState(s[i..]));
-            ==
-            M.InterpFunctionOn(func.ToFunction(), args');
-            == { assert args' == argsSubst; }
-            M.InterpFunctionOn(func.ToFunction(), argsSubst);
-            == { SubstituteIdxIsDefinedOnLemma(e, i, |s|); }
-            funcSubst.Eval(s);
-            == { assert SubstituteIdx(e, i) == funcSubst; }
-            SubstituteIdx(e, i).Eval(s);
-          }
-        }
+        // if func.ArgsCompatibleWith(args') {
+        //   calc {
+        //     e.Eval(s[..i] + AdjustState(s[i..]));
+        //     ==
+        //     M.InterpFunctionOn(func.ToFunction(), args');
+        //     == { assert args' == argsSubst; }
+        //     M.InterpFunctionOn(func.ToFunction(), argsSubst);
+        //     == { SubstituteIdxIsDefinedOnLemma(e, i, |s|); }
+        //     funcSubst.Eval(s);
+        //     == { assert SubstituteIdx(e, i) == funcSubst; }
+        //     SubstituteIdx(e, i).Eval(s);
+        //   }
+        // }
       case QuantifierExpr(true, v, tp, body) => 
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
         assert forall b: M.Any | M.HasType(b, tp.ToType()) :: 
@@ -478,19 +515,22 @@ module Context' {
         var b := SubstituteIdx(rhs, i).Eval(s) by {
           SubstituteIdxIsDefinedOnLemma(rhs, i, |s|);
         }
-        calc {
-          LetExpr(v, rhs, body).Eval(s[..i] + AdjustState(s[i..]));
-          ==
-          body.Eval((s[..i] + AdjustState(s[i..])).Update([rhs.Eval(s[..i] + AdjustState(s[i..]))]));
-          == { SubstituteIdxIsDefinedOnLemma(rhs, i, |s|); }
-          body.Eval((s[..i] + AdjustState(s[i..])).Update([b]));
-          == { assert ([b] + s)[..i+1] == [b] + s[..i];
-              assert ([b] + s)[i+1..] == s[i..];
-              assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..])); }
-          body.Eval(([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
-          == { AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
-              SubstituteIdxIsDefinedOnLemma(body, i + 1, |s| + 1); }
-          SubstituteIdx(body, i + 1).Eval(s.Update([b]));
+        if b.Some? {
+          var b := b.value;
+          calc {
+            LetExpr(v, rhs, body).Eval(s[..i] + AdjustState(s[i..]));
+            ==
+            body.Eval((s[..i] + AdjustState(s[i..])).Update([rhs.Eval(s[..i] + AdjustState(s[i..])).value]));
+            == { SubstituteIdxIsDefinedOnLemma(rhs, i, |s|); }
+            body.Eval((s[..i] + AdjustState(s[i..])).Update([b]));
+            == { assert ([b] + s)[..i+1] == [b] + s[..i];
+                assert ([b] + s)[i+1..] == s[i..];
+                assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..])); }
+            body.Eval(([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
+            == { AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
+                SubstituteIdxIsDefinedOnLemma(body, i + 1, |s| + 1); }
+            SubstituteIdx(body, i + 1).Eval(s.Update([b]));
+          }
         }
       case _  => 
     }

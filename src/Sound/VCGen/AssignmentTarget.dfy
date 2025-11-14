@@ -181,6 +181,7 @@ module AssignmentTarget' {
   }
   
   function Process'(stmt: Stmt): VarsJumps 
+    requires stmt.ValidCalls()
     ensures forall v <- Process'(stmt).Values, s <- v :: s < stmt.Depth()
     decreases stmt
   {
@@ -211,6 +212,7 @@ module AssignmentTarget' {
   }
 
   function SeqProcess'(ss: seq<Stmt>): VarsJumps 
+    requires SeqValidCalls(ss)
     ensures forall v <- SeqProcess'(ss).Values, s <- v :: s < SeqDepth(ss)
     decreases ss
   {
@@ -223,6 +225,7 @@ module AssignmentTarget' {
   }
 
   lemma Process'Correct(stmt: Stmt, st: State, m: VarsJumps, posts: Omni.Continuation) 
+    requires stmt.ValidCalls()
     requires Process'(stmt) == m
     ensures forall v <- m.Values, s <- v :: s < stmt.Depth()
     requires Omni.Sem(stmt, st, posts)
@@ -322,6 +325,7 @@ module AssignmentTarget' {
   }
 
   lemma SeqProcess'Correct(ss: seq<Stmt>, st: State, m: VarsJumps, posts: Omni.Continuation) 
+    requires SeqValidCalls(ss)
     requires SeqProcess'(ss) == m
     ensures forall v <- m.Values, s <- v :: s < SeqDepth(ss)
     requires Omni.SeqSem(ss, st, posts)
@@ -397,6 +401,7 @@ module AssignmentTarget' {
   }
 
   function Process(stmt: Stmt): set<Idx> 
+    requires stmt.ValidCalls()
     ensures forall v <- Process(stmt) :: v < stmt.Depth()
   {
     var vs := Process'(stmt);
@@ -410,6 +415,7 @@ module AssignmentTarget' {
 
 
   lemma Correct'(stmt: Stmt, st: State, vars: set<Idx>, posts: Omni.Continuation) 
+    requires stmt.ValidCalls()
     requires forall v <- vars :: v < |st|
     requires Omni.Sem(stmt, st, posts)
     requires Process(stmt) == vars
@@ -420,6 +426,7 @@ module AssignmentTarget' {
   }
 
   lemma Correct(stmt: Stmt, st: State, st': State, vars: set<Idx>, posts: Omni.Continuation, post: iset<State>) 
+    requires stmt.ValidCalls()
     requires forall v <- vars :: v < |st'|
     requires Omni.Sem(stmt, st, posts.UpdateHead(post))
     requires Process(stmt) == vars

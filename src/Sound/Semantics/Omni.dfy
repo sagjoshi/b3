@@ -152,7 +152,7 @@ module Omni {
     case Assign(x, v)   =>
         && x < |st|
         && v.IsDefinedOn(|st|)
-        && st[x := v.Eval(st)] in post
+        && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in post)
     case Call(proc, args) =>
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
@@ -201,7 +201,7 @@ module Omni {
     case Assign(x, v)   => 
       && x < |st|
       && v.IsDefinedOn(|st|) 
-      && st[x := v.Eval(st)] in posts.head
+      && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in posts.head)
     case Call(proc, args) => 
       && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)
@@ -219,6 +219,12 @@ module Omni {
     case Escape(l)      => |posts| > l && st in posts[l]
     case Loop(inv, body) => RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
+  /**
+    (e1 + e2).Eval(post) ==
+      exists post1, post2: iset<State> :: 
+        e1.Eval(post1) && e2.Eval(post2) &&
+        forall s1 <- post1, s2 <- post2 :: s1 + s2 in post
+   */
 
   greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) 
     reads *

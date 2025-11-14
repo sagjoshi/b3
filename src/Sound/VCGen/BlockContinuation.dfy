@@ -80,6 +80,7 @@ module Block {
     }
 
     predicate VarsDefined(n: nat) 
+      requires ValidCalls()
       requires IsDefinedOn(n)
     {
       if this == [] then true else
@@ -87,6 +88,7 @@ module Block {
     }
 
     lemma VarsDefinedTransitivity(n1: nat, n2: nat)
+      requires ValidCalls()
       requires IsDefinedOn(n1)
       requires VarsDefined(n1)
       requires n1 <= n2
@@ -108,6 +110,7 @@ module Block {
 
     lemma DefinedPrefix''(l: nat, n: nat)
       requires l <= |this|
+      requires ValidCalls()
       requires IsDefinedOn(n)
       ensures n >= this[..l].AllVarsInScope()
     {
@@ -117,6 +120,7 @@ module Block {
 
     lemma DefinedPrefix'(l: nat, n: nat)
       requires l < |this|
+      requires ValidCalls()
       requires JumpsDefined()
       requires IsDefinedOn(n)
       requires VarsDefined(n)
@@ -140,6 +144,7 @@ module Block {
 
     lemma DefinedPrefix(l: nat, n: nat)
       requires l <= |this|
+      requires ValidCalls()
       requires JumpsDefined()
       requires IsDefinedOn(n)
       requires VarsDefined(n)

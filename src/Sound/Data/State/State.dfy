@@ -35,7 +35,7 @@ module State {
           vals[j - i] 
         else if j < |this| then
           this[j]
-        else Bot
+        else Bot()
       )
     }
 

@@ -126,6 +126,8 @@ module AST {
     forall s <- ss :: s.ValidCalls()
   }
 
+  // lemma SeqValidCallsLemma(ss: seq<Stmt>, s: Stmt)
+
   function SeqProceduresCalled(ss: seq<Stmt>): set<Procedure> {
     if ss == [] then {} else ss[0].ProceduresCalled() + SeqProceduresCalled(ss[1..])
   }

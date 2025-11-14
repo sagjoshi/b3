@@ -51,22 +51,24 @@ module VCGenOmni {
         assert x.Eval(context_in.AdjustState(st)) == v' by {
           context_in.AdjustStateSubstituteEvalLemma(st, x);
         }
-        var st' := st.UpdateOrAdd(vNew, v');
-        var stTransformed := context_in.AdjustState(st)[v := v'];
+        if v'.Some? {
+          var st' := st.UpdateOrAdd(vNew, v'.value);
+          var stTransformed := context_in.AdjustState(st)[v := v'.value];
 
-        assert stTransformed == context.AdjustState(st') by {
-          context_in.AdjustStateSubstituteLemma(st, x);
-        }
+          assert stTransformed == context.AdjustState(st') by {
+            context_in.AdjustStateSubstituteLemma(st, x);
+          }
 
-        assert context.IsSatisfiedOn(st') by {
-          context_in.SubstituteIsDefinedOnLemma(x, vNew);
-          context_in.Substitute(x).EvalDepthLemma(st, st');
-          EvalEqLemma(BVar(vNew), context_in.Substitute(x), st');
+          assert context.IsSatisfiedOn(st') by {
+            context_in.SubstituteIsDefinedOnLemma(x, vNew);
+            context_in.Substitute(x).EvalDepthLemma(st, st');
+            EvalEqLemma(BVar(vNew), context_in.Substitute(x), st');
 
-          assert forall e <- context_in.ctx :: e.HoldsOn(st) ==> e.HoldsOn(st') by 
-          {
-            forall e: Expr | e in context_in.ctx && e.HoldsOn(st) ensures e.HoldsOn(st') {
-              e.EvalDepthLemma(st, st');
+            assert forall e <- context_in.ctx :: e.HoldsOn(st) ==> e.HoldsOn(st') by 
+            {
+              forall e: Expr | e in context_in.ctx && e.HoldsOn(st) ensures e.HoldsOn(st') {
+                e.EvalDepthLemma(st, st');
+              }
             }
           }
         }
@@ -424,7 +426,9 @@ module VCGenOmni {
           }
         case Loop(inv, body) =>
           var VCInvIni := context.MkEntailment(inv);
-          var assnvars := AssignmentTarget'.Process(body);
+          var assnvars := AssignmentTarget'.Process(body) by {
+            assert Loop(inv, body).ValidCalls();
+          }
 
           var vNew, context' := context.AddVarSet(assnvars);
 
