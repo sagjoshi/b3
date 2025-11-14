@@ -9,7 +9,6 @@ module Model {
     reveals Any, True, False, LogicAnd, IsBool, IsInt, HasType, Implies, 
       Literal, FunctionSig, Function, Type, Int, Bool, Eql, Neql, IsBoolSet, IsIntSet,
       HaveTypes
-      ,BoolUnaryFunc, BoolBinaryFunc, IntUnaryFunc, IntBinaryFunc, BinaryFunc
 
   type Type = string
   const Int : Type := "int"
@@ -125,7 +124,8 @@ module Model {
   }
 
   function Minus(x: Any, y: Any): Any
-    requires IsInt(x) && IsInt(y) 
+    requires IsInt(x) 
+    requires IsInt(y) 
   {
     InterpInt(ToInt(x) - ToInt(y))
   }
@@ -173,18 +173,4 @@ module Model {
   function {:axiom} InterpFunctionOn(func: Function, args: seq<Any>): Any
     requires HaveTypes(args, func.sig)
     ensures HasType(InterpFunctionOn(func, args), func.resultType)
-
-  type BinaryFunc = (Any, Any) -> Any
-
-  type BoolUnaryFunc = f: Any --> Any | forall x :: IsBool(x) ==> f.requires(x)
-    witness Not
-
-  type BoolBinaryFunc = f: (Any, Any) --> Any | forall x, y :: IsBool(x) && IsBool(y) ==> f.requires(x, y)
-    witness LogicAnd
-
-  type IntUnaryFunc = f: Any --> Any | forall x :: IsInt(x) ==> f.requires(x)
-    witness Negate
-
-  type IntBinaryFunc = f: (Any, Any) --> Any | forall x, y :: IsInt(x) && IsInt(y) ==> f.requires(x, y)
-    witness Plus
 }
