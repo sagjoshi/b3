@@ -359,14 +359,14 @@ module Expr {
       case QuantifierExpr(false, v, tp, body) =>
         exists x: M.Any | M.HasType(x, tp.ToType()) :: 
           body.RefEval(s.Update([x]), outs * iset{M.True, M.False})
-      }
+    }
 
-      lemma EvalSound(s: State)
-        requires IsDefinedOn(|s|)
-        ensures RefEval(s, iset v: M.Any | Eval(s) == Some(v))
-      {
+    lemma EvalSound(s: State)
+      requires IsDefinedOn(|s|)
+      ensures RefEval(s, iset v: M.Any | Eval(s) == Some(v))
+    {
 
-      }
+    }
 
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
