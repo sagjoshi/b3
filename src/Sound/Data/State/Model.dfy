@@ -9,8 +9,7 @@ module Model {
     reveals Any, True, False, LogicAnd, IsBool, IsInt, HasType, Implies, 
       Literal, FunctionSig, Function, Type, Int, Bool, Eql, Neql, IsBoolSet, IsIntSet,
       HaveTypes
-      ,BoolUnaryFunc, BoolBinaryFunc, IntUnaryFunc, IntBinaryFunc, BinaryFunc,
-      InterpretBoolUnaryFuncISet, InterpretBoolBinaryFuncISet, InterpretIntUnaryFuncISet, InterpretIntBinaryFuncISet, InterpretBinaryFuncISet
+      ,BoolUnaryFunc, BoolBinaryFunc, IntUnaryFunc, IntBinaryFunc, BinaryFunc
 
   type Type = string
   const Int : Type := "int"
@@ -175,23 +174,12 @@ module Model {
     requires HaveTypes(args, func.sig)
     ensures HasType(InterpFunctionOn(func, args), func.resultType)
 
-  // type BoolFunc = f: seq<Any> --> Any | forall ss: seq<Any> :: (forall s <- ss :: IsBool(s)) ==> f.requires(ss)
-  // type IntFunc = f: seq<Any> --> Any | forall ss: seq<Any> :: (forall s <- ss :: IsInt(s)) ==> f.requires(ss)
-  // type PolymorphicFunc = f: seq<Any> -> Any
-
-  function InterpretBinaryBoolFunc(f: BoolBinaryFunc, ss: seq<Any>): Any
-    requires forall s <- ss :: IsBool(s)
-  {
-    f(ss[0], ss[1])
-  }
-
-
-
   type BinaryFunc = (Any, Any) -> Any
+
   type BoolUnaryFunc = f: Any --> Any | forall x :: IsBool(x) ==> f.requires(x)
     witness Not
 
-  type BoolBinaryFunc = f: (Any, Any) --> Any | forall x, y :: IsBool(x) && IsBool(y) == f.requires(x, y)
+  type BoolBinaryFunc = f: (Any, Any) --> Any | forall x, y :: IsBool(x) && IsBool(y) ==> f.requires(x, y)
     witness LogicAnd
 
   type IntUnaryFunc = f: Any --> Any | forall x :: IsInt(x) ==> f.requires(x)
@@ -199,34 +187,4 @@ module Model {
 
   type IntBinaryFunc = f: (Any, Any) --> Any | forall x, y :: IsInt(x) && IsInt(y) ==> f.requires(x, y)
     witness Plus
-
-  ghost predicate InterpretBinaryFuncISet(f: BinaryFunc, xs: iset<Any>, ys: iset<Any>, outs: iset<Any>) {
-    forall x <- xs, y <- ys :: f(x, y) in outs
-  }
-
-  ghost predicate InterpretBoolUnaryFuncISet(f: BoolUnaryFunc, xs: iset<Any>, outs: iset<Any>) 
-    requires forall x <- xs :: IsBool(x)
-  {
-    forall x <- xs :: f(x) in outs
-  }
-
-  ghost predicate InterpretBoolBinaryFuncISet(f: BoolBinaryFunc, xs: iset<Any>, ys: iset<Any>, outs: iset<Any>) 
-    requires forall x <- xs :: IsBool(x)
-    requires forall y <- ys :: IsBool(y)
-  {
-    forall x <- xs, y <- ys :: f(x, y) in outs
-  }
-
-  ghost predicate InterpretIntUnaryFuncISet(f: IntUnaryFunc, xs: iset<Any>, outs: iset<Any>) 
-    requires forall x <- xs :: IsInt(x)
-  {
-    forall x <- xs :: f(x) in outs
-  }
-
-  ghost predicate InterpretIntBinaryFuncISet(f: IntBinaryFunc, xs: iset<Any>, ys: iset<Any>, outs: iset<Any>) 
-    requires forall x <- xs :: IsInt(x)
-    requires forall y <- ys :: IsInt(y)
-  {
-    forall x <- xs, y <- ys :: f(x, y) in outs
-  }
 }

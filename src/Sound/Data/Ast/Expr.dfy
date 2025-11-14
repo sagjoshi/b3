@@ -181,26 +181,9 @@ module Expr {
       }
     }
 
-    greatest predicate RefEval(argss: iset<seq<M.Any>>, outs: iset<M.Any>)
+    greatest predicate RefEval(args: seq<M.Any>, outs: iset<M.Any>)
     {
-      forall args <- argss :: CompatibleWith(args) ==>
-        reveal Eval;
-        Eval(args).value in outs
-      // && CompatibleWithISet(args) 
-      // && 
-      //   if IsTernaryOperator() then
-      //     forall guard <- args[0], thn <- args[1], els <- args[2] :: if M.IsBool(guard) then thn in outs else els in outs
-      //   else if IsUnaryOperator() && IsBoolOperator() then
-      //     M.InterpretBoolUnaryFuncISet(ToBoolUnaryFunc(), args[0], outs)
-      //   else if IsUnaryOperator() && IsIntOperator() then
-      //     M.InterpretIntUnaryFuncISet(ToIntUnaryFunc(), args[0], outs)
-      //   else if IsBinaryOperator() && IsBoolOperator() then
-      //     M.InterpretBoolBinaryFuncISet(ToBoolBinaryFunc(), args[0], args[1], outs)
-      //   else if IsBinaryOperator() && IsIntOperator() then
-      //     M.InterpretIntBinaryFuncISet(ToIntBinaryFunc(), args[0], args[1], outs)
-      //   else if IsBinaryOperator() && IsPolymorphicOperator() then
-      //     M.InterpretBinaryFuncISet(ToPolymorphicBinaryFunc(), args[0], args[1], outs)
-      //   else false
+      Eval(args).Some? ==> Eval(args).value in outs
     }
       
   }
@@ -277,13 +260,15 @@ module Expr {
       M.Function(Name, seq(|Parameters|, (i: nat) requires i < |Parameters| => Parameters[i].typ.ToType()), ResultType.ToType())
     }
 
-    // ghost function EvalArgs(args: seq<M.Any>): M.Any
-    //   requires !IsUninterpreted()
-    //   requires GetDef().IsDefinedOn(|args|)
-    //   reads *
-    // {
-    //   GetDef().Eval(args as State)
-    // }
+    greatest predicate RefEval(args: seq<M.Any>, outs: iset<M.Any>)
+      reads *
+    {
+      && ArgsCompatibleWith(args)
+      && if IsUninterpreted() then
+          M.InterpFunctionOn(ToFunction(), args) in outs
+        else
+          GetDef().RefEval(args as State, outs)
+    }
 
   }
 
@@ -353,41 +338,31 @@ module Expr {
       case CustomConst(value) => M.InterpLiteral(value.ToLiteral()) in outs
       case BVar(id) => id < |s| && s[id] in outs
       case OperatorExpr(op, args) => 
-        exists outArgs: iset<seq<M.Any>> :: 
-          && RefSeqEval(args, s, outArgs)
-          && op.RefEval(outArgs, outs)
+        exists outArgsSet: seq<iset<M.Any>> :: 
+          && RefSeqEval(args, s, outArgsSet)
+          && forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, outs)
       case FunctionCallExpr(func, args) => 
-        exists outArgs: iset<seq<M.Any>> :: 
-          && RefSeqEval(args, s, outArgs)
-          // && forall outArg <- outArgs :: 
-          //   if func.IsUninterpreted() then
-          //     M.InterpFunctionOn(func.ToFunction(), outArg) in outs
-          //   else
-          //     func.GetDef().RefEval(
-        // exists outArgs: seq<iset<M.Any>> :: 
-        //   && RefSeqEval(args, s, outArgs)
-      //   var args :- SeqEval(args, s);
-      //   op.Eval(args) in outs
-      // case FunctionCallExpr(func, args) => 
-      //   var args :- SeqEval(args, s);
-      //   if func.ArgsCompatibleWith(args) then
-      //     M.InterpFunctionOn(func.ToFunction(), args) in outs
-      //   else None
-    }
+        exists outArgsSet: seq<iset<M.Any>> :: 
+          && RefSeqEval(args, s, outArgsSet)
+          && forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, outs)
+      case LetExpr(v, rhs, body) => 
+        exists outsRhs: iset<M.Any> :: 
+          && rhs.RefEval(s, outsRhs)
+          && forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
+      case QuantifierExpr(true, v, tp, body) => 
+        forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+          body.RefEval(s.Update([x]), outs * iset{M.True, M.False})
+      case QuantifierExpr(false, v, tp, body) =>
+        exists x: M.Any | M.HasType(x, tp.ToType()) :: 
+          body.RefEval(s.Update([x]), outs * iset{M.True, M.False})
+      }
 
-    //  e: Expr, s: State --> { e.IsDefinedOn(s) && Holds(FunctionAxioms) } e { v => Some(v) == e.Eval(s) }
-    /**
-      
-      RefEval is BigStep:
-        { Pre } e { v => Post(v) } :=
-        Pre ==> 
-          forall v: Any, e.RefEval(s, v) ==> Post(v)
+      lemma EvalSound(s: State)
+        requires IsDefinedOn(|s|)
+        ensures RefEval(s, iset v: M.Any | Eval(s) == Some(v))
+      {
 
-      RefEval is Omni(WP):
-        Pre ==>
-          e.RefEval(s, iset v: Any | Post(v))
-    
-     */
+      }
 
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
@@ -422,23 +397,19 @@ module Expr {
     }
   }
 
-  ghost predicate InProjectISetSeq<T(!new)>(ss: iset<seq>, i: nat, v: T)
-    requires forall s <- ss :: |s| > i
-  {
-    exists s <- ss :: v == s[i]
+  ghost function CrossProduct<T(!new)>(ss: seq<iset<T>>): iset<seq<T>> {
+    iset s | 
+      && |s| == |ss|
+      && forall i: nat | i < |ss| :: s[i] in ss[i]
   }
 
-  ghost function ProjectISetSeq<T(!new)>(ss: iset<seq>, i: nat): iset<T> 
-    requires forall s <- ss :: |s| > i
-  {
-    iset v | InProjectISetSeq(ss, i, v)
-  }
-
-  greatest predicate RefSeqEval(ss: seq<Expr>, s: State, outSeqs: iset<seq<M.Any>>) 
+  greatest predicate RefSeqEval(ss: seq<Expr>, s: State, outSeqs: seq<iset<M.Any>>) 
     reads *
   {
-    && (forall outSeq <- outSeqs :: |outSeq| == |ss|)
-    && (forall i: nat | i < |ss| :: ss[i].RefEval(s, ProjectISetSeq(outSeqs, i)))
+    if ss == [] then outSeqs == [] else
+    && |outSeqs| > 0
+    && ss[0].RefEval(s, outSeqs[0])
+    && RefSeqEval(ss[1..], s, outSeqs[1..])
   }
 
   ghost function SeqEval(ss: seq<Expr>, s: State): Option<seq<M.Any>>
