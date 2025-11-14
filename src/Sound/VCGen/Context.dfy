@@ -154,32 +154,6 @@ module Context {
       this.(ctx := ctx + SeqSubstitute(ss))
     }
 
-    // method mkPreContext(proc: Procedure, args: CallArguments) returns (context: Context)
-    //   requires Call(proc, args).ValidCalls()
-    //   requires args.IsDefinedOn(|incarnation|)
-    //   ensures |context.incarnation| == |args|
-    //   ensures forall i <- context.incarnation :: i in incarnation
-    // {
-    //   var incrPre := [];
-    //   for i := 0 to |args|
-    //     invariant |incrPre| == i
-    //     invariant forall j <- incrPre :: j in incarnation
-    //     invariant args[..i].Depth() <= args.Depth()
-    //     invariant forall s: State :: 
-    //       (forall i <- incarnation :: i < |s|) ==> 
-    //       Context(ctx, incrPre).AdjustState(s) == args[..i].Eval(AdjustState(s))
-    //   {
-    //     args.IsDefinedOnIn(args[i], |incarnation|);
-    //     incrPre := incrPre + [incarnation[args[i].v]];
-
-    //     assert args[..i + 1].Depth() <= args.Depth() by {
-    //       assert args == args[..i + 1] + args[i + 1..];
-    //       args[..i + 1].NumInOutArgsConcatLemma(args[i + 1..]);
-    //     }
-    //   }
-    //   context := Context(ctx, incrPre);
-    // }
-
     function mkPreContext(proc: Procedure, args: CallArguments): Context
       requires Call(proc, args).ValidCalls()
       requires args.IsDefinedOn(|incarnation|)
@@ -452,36 +426,6 @@ module Context {
         SeqAdjustStateSubstituteIdxLemma(args, s, i);
       case FunctionCallExpr(func, args) => 
         SeqAdjustStateSubstituteIdxLemma(args, s, i);
-        // forall j: nat | j < |args|
-        //   ensures 
-        //     (SeqExprDepthLemma(args, args[j]);
-        //     SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-        //     args[j].Eval(s[..i] + AdjustState(s[i..])) == SubstituteIdx(args[j], i).Eval(s)) {
-        // }
-        // var ss := seq(|args|, (j: nat) requires j < |args| => SubstituteIdx(args[j], i));
-        // var args' := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
-        //   SeqExprDepthLemma(args, args[j]);
-        //   SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-        //   args[j].Eval(s[..i] + AdjustState(s[i..])));
-        // var argsSubst := seq(|ss|, (j: nat) requires j < |ss| /*reads * */ => 
-        //   SeqExprDepthLemma(args, args[j]);
-        //   SubstituteIdxIsDefinedOnLemma(args[j], i, |s|);
-        //   ss[j].Eval(s));
-        // var funcSubst := FunctionCallExpr(func, ss);
-        
-        // if func.ArgsCompatibleWith(args') {
-        //   calc {
-        //     e.Eval(s[..i] + AdjustState(s[i..]));
-        //     ==
-        //     M.InterpFunctionOn(func.ToFunction(), args');
-        //     == { assert args' == argsSubst; }
-        //     M.InterpFunctionOn(func.ToFunction(), argsSubst);
-        //     == { SubstituteIdxIsDefinedOnLemma(e, i, |s|); }
-        //     funcSubst.Eval(s);
-        //     == { assert SubstituteIdx(e, i) == funcSubst; }
-        //     SubstituteIdx(e, i).Eval(s);
-        //   }
-        // }
       case QuantifierExpr(true, v, tp, body) => 
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
         assert forall b: M.Any | M.HasType(b, tp.ToType()) :: 

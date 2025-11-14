@@ -37,58 +37,172 @@ module Expr {
       case _ => false
     }
 
+    predicate IsTernaryOperator() {
+      match this
+      case IfThenElse => true
+      case _ => false
+    }
+
+    predicate CompatibleWith(args: seq<M.Any>) {
+      if IsTernaryOperator() then
+        |args| == 3 && M.IsBool(args[0]) && 
+          // TODO: Fix
+          M.InferType(args[1]) == M.InferType(args[2])
+      else if IsUnaryOperator() then
+        |args| == 1 && 
+          if IsBoolOperator() then
+             M.IsBool(args[0])
+          else if IsIntOperator() then
+            M.IsInt(args[0])
+          else false
+      else if IsBinaryOperator() then
+        |args| == 2 && 
+          if IsBoolOperator() then
+            M.IsBool(args[0]) && M.IsBool(args[1])
+          else if IsIntOperator() then
+            M.IsInt(args[0]) && M.IsInt(args[1])
+          else if IsPolymorphicOperator() then
+            true
+          else false
+      else false
+    }
+
+    ghost predicate CompatibleWithISet(args: seq<iset<M.Any>>) {
+      if IsTernaryOperator() then
+        |args| == 3 && M.IsBoolSet(args[0]) && M.IsBoolSet(args[1]) && M.IsBoolSet(args[2])
+      else if IsUnaryOperator() then
+        |args| == 1 && 
+          if IsBoolOperator() then
+             M.IsBoolSet(args[0])
+          else if IsIntOperator() then
+            M.IsIntSet(args[0])
+          else false
+      else if IsBinaryOperator() then
+        |args| == 2 && 
+          if IsBoolOperator() then
+            M.IsBoolSet(args[0]) && M.IsBoolSet(args[1])
+          else if IsIntOperator() then
+            M.IsIntSet(args[0]) && M.IsIntSet(args[1])
+          else if IsPolymorphicOperator() then
+            true
+          else false
+      else false
+    }
+
     opaque function Eval(args: seq<M.Any>): Option<M.Any>
     {
-      if this == IfThenElse then
-        if |args| != 3 then None
-        else 
-          var guard := args[0];
-          var thn := args[1];
-          var els := args[2];
-          if M.IsBool(guard) then 
-            if M.ToBool(guard) then Some(thn) else Some(els)
-          else None
-        else if IsUnaryOperator() then
-          if |args| != 1 then None
-          else
-            var e := args[0];
-            if M.IsBool(e) && this == LogicalNot then
-              Some(M.Not(e))
-            else if M.IsInt(e) && this == UnaryMinus then
-              Some(M.Negate(e))
-            else None
-        else if IsBinaryOperator() then
-          if |args| != 2 then None
-          else
-            var e0 := args[0];
-            var e1 := args[1];
-            match this {
-              case Eql => Some(M.InterpBool(e0 == e1))
-              case Neql => Some(M.InterpBool(e0 != e1))
-              case _ =>
-                if M.IsBool(e0) && M.IsBool(e1) then
-                  match this {
-                    case Equiv => Some(M.Equiv(e0, e1))
-                    case LogicalImp => Some(M.Implies(e0, e1))
-                    case LogicalAnd => Some(M.LogicAnd(e0, e1))
-                    case LogicalOr => Some(M.Or(e0, e1))
-                    case _ => None
-                  }
-                else if M.IsInt(e0) && M.IsInt(e1) then
-                  match this {
-                    case Less => Some(M.Less(e0, e1))
-                    case AtMost => Some(M.AtMost(e0, e1))
-                    case Plus => Some(M.Plus(e0, e1))
-                    case Minus => Some(M.Minus(e0, e1))
-                    case Times => Some(M.Times(e0, e1))
-                    case Div => Some(M.Div(e0, e1))
-                    case Mod => Some(M.Mod(e0, e1))
-                    case _ => None
-                  }
-                else None
-            }
-        else None
+      if !CompatibleWith(args) then None
+      else if IsTernaryOperator() then
+        if M.IsBool(args[0]) then Some(args[0]) else Some(args[1])
+      else if IsUnaryOperator() && IsBoolOperator() then
+        Some(ToBoolUnaryFunc()(args[0]))
+      else if IsUnaryOperator() && IsIntOperator() then
+        Some(ToIntUnaryFunc()(args[0]))
+      else if IsBinaryOperator() && IsBoolOperator() then
+        Some(ToBoolBinaryFunc()(args[0], args[1]))
+      else if IsBinaryOperator() && IsIntOperator() then
+        Some(ToIntBinaryFunc()(args[0], args[1]))
+      else if IsBinaryOperator() && IsPolymorphicOperator() then
+        Some(ToPolymorphicBinaryFunc()(args[0], args[1]))
+      else None
     }
+
+    predicate IsIntOperator() {
+      match this
+      case Plus | Minus | Times | Div | Mod | Less | AtMost => true
+      case _ => false
+    }
+
+    predicate IsBoolOperator() {
+      match this
+      case Equiv | LogicalImp | LogicalAnd | LogicalOr => true
+      case _ => false
+    }
+
+    predicate IsPolymorphicOperator() {
+      match this
+      case Eql | Neql => true
+      case _ => false
+    }
+    
+
+    function ToBoolUnaryFunc(): M.BoolUnaryFunc 
+      requires IsUnaryOperator()
+      requires IsBoolOperator()
+    {
+      match this {
+        case LogicalNot => M.Not
+      }
+    }
+
+    function ToBoolBinaryFunc(): M.BoolBinaryFunc 
+      requires IsBinaryOperator()
+      requires IsBoolOperator()
+    {
+      match this {
+        case Equiv => M.Equiv
+        case LogicalImp => M.Implies
+        case LogicalAnd => M.LogicAnd
+        case LogicalOr => M.Or
+      }
+    }
+
+    function ToIntUnaryFunc(): M.IntUnaryFunc 
+      requires IsUnaryOperator()
+      requires IsIntOperator()
+    {
+      match this {
+        case UnaryMinus => M.Negate
+      }
+    }
+
+    function ToIntBinaryFunc(): M.IntBinaryFunc 
+      requires IsBinaryOperator()
+      requires IsIntOperator()
+    {
+      match this {
+        case Plus => M.Plus
+        case Minus => M.Minus
+        case Times => M.Times
+        case Div => M.Div
+        case Mod => M.Mod
+        case Less => M.Less
+        case AtMost => M.AtMost
+      }
+    }
+
+    function ToPolymorphicBinaryFunc(): M.BinaryFunc 
+      requires IsBinaryOperator()
+      requires IsPolymorphicOperator()
+    {
+      match this {
+        case Eql => M.Eql
+        case Neql => M.Neql
+      }
+    }
+
+    greatest predicate RefEval(argss: iset<seq<M.Any>>, outs: iset<M.Any>)
+    {
+      forall args <- argss :: CompatibleWith(args) ==>
+        reveal Eval;
+        Eval(args).value in outs
+      // && CompatibleWithISet(args) 
+      // && 
+      //   if IsTernaryOperator() then
+      //     forall guard <- args[0], thn <- args[1], els <- args[2] :: if M.IsBool(guard) then thn in outs else els in outs
+      //   else if IsUnaryOperator() && IsBoolOperator() then
+      //     M.InterpretBoolUnaryFuncISet(ToBoolUnaryFunc(), args[0], outs)
+      //   else if IsUnaryOperator() && IsIntOperator() then
+      //     M.InterpretIntUnaryFuncISet(ToIntUnaryFunc(), args[0], outs)
+      //   else if IsBinaryOperator() && IsBoolOperator() then
+      //     M.InterpretBoolBinaryFuncISet(ToBoolBinaryFunc(), args[0], args[1], outs)
+      //   else if IsBinaryOperator() && IsIntOperator() then
+      //     M.InterpretIntBinaryFuncISet(ToIntBinaryFunc(), args[0], args[1], outs)
+      //   else if IsBinaryOperator() && IsPolymorphicOperator() then
+      //     M.InterpretBinaryFuncISet(ToPolymorphicBinaryFunc(), args[0], args[1], outs)
+      //   else false
+    }
+      
   }
 
   lemma EqlEvalLemma(v1: M.Any, v2: M.Any)
@@ -230,19 +344,56 @@ module Expr {
         body.Eval(s.Update([x]))
     }
 
+    greatest predicate RefEval(s: State, outs: iset<M.Any>)
+      reads *
+    {
+      match this
+      case BConst(bvalue) => M.InterpBool(bvalue) in outs
+      case IConst(ivalue) => M.InterpInt(ivalue) in outs
+      case CustomConst(value) => M.InterpLiteral(value.ToLiteral()) in outs
+      case BVar(id) => id < |s| && s[id] in outs
+      case OperatorExpr(op, args) => 
+        exists outArgs: iset<seq<M.Any>> :: 
+          && RefSeqEval(args, s, outArgs)
+          && op.RefEval(outArgs, outs)
+      case FunctionCallExpr(func, args) => 
+        exists outArgs: iset<seq<M.Any>> :: 
+          && RefSeqEval(args, s, outArgs)
+          // && forall outArg <- outArgs :: 
+          //   if func.IsUninterpreted() then
+          //     M.InterpFunctionOn(func.ToFunction(), outArg) in outs
+          //   else
+          //     func.GetDef().RefEval(
+        // exists outArgs: seq<iset<M.Any>> :: 
+        //   && RefSeqEval(args, s, outArgs)
+      //   var args :- SeqEval(args, s);
+      //   op.Eval(args) in outs
+      // case FunctionCallExpr(func, args) => 
+      //   var args :- SeqEval(args, s);
+      //   if func.ArgsCompatibleWith(args) then
+      //     M.InterpFunctionOn(func.ToFunction(), args) in outs
+      //   else None
+    }
+
+    //  e: Expr, s: State --> { e.IsDefinedOn(s) && Holds(FunctionAxioms) } e { v => Some(v) == e.Eval(s) }
+    /**
+      
+      RefEval is BigStep:
+        { Pre } e { v => Post(v) } :=
+        Pre ==> 
+          forall v: Any, e.RefEval(s, v) ==> Post(v)
+
+      RefEval is Omni(WP):
+        Pre ==>
+          e.RefEval(s, iset v: Any | Post(v))
+    
+     */
+
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
-      // reads *
     {
       Eval(s) == Some(M.True)
     }
-
-    // lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr, model: Model)
-    //   requires e1.IsDefinedOn(s1, + 1)
-    //   requires e2.IsDefinedOn(|s2| + 1)
-    //   requires forall b: bool :: e1.Eval(s1.Update([BVal(b)])) == e2.Eval(s2.Update([BVal(b)]))
-    //   ensures (forall b: bool :: SomeBVal?(e1.Eval(s1.Update([BVal(b)])))) == (forall b: bool :: SomeBVal?(e2.Eval(s2.Update([BVal(b)]))))
-    // {  }
 
     lemma EvalDepthLemma(s1: State, s2: State) 
       requires IsDefinedOn(|s1|)
@@ -269,6 +420,25 @@ module Expr {
     { 
       iset st: State | IsDefinedOn(|st|) && HoldsOn(st) 
     }
+  }
+
+  ghost predicate InProjectISetSeq<T(!new)>(ss: iset<seq>, i: nat, v: T)
+    requires forall s <- ss :: |s| > i
+  {
+    exists s <- ss :: v == s[i]
+  }
+
+  ghost function ProjectISetSeq<T(!new)>(ss: iset<seq>, i: nat): iset<T> 
+    requires forall s <- ss :: |s| > i
+  {
+    iset v | InProjectISetSeq(ss, i, v)
+  }
+
+  greatest predicate RefSeqEval(ss: seq<Expr>, s: State, outSeqs: iset<seq<M.Any>>) 
+    reads *
+  {
+    && (forall outSeq <- outSeqs :: |outSeq| == |ss|)
+    && (forall i: nat | i < |ss| :: ss[i].RefEval(s, ProjectISetSeq(outSeqs, i)))
   }
 
   ghost function SeqEval(ss: seq<Expr>, s: State): Option<seq<M.Any>>
