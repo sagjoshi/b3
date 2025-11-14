@@ -25,97 +25,62 @@ module Expr {
       case _ => 2
     }
 
-    predicate IsBinaryOperator() {
+    function Arity() : nat {
       match this
-      case Equiv | LogicalImp | LogicalAnd | LogicalOr | Eql | Neql | Less | AtMost => true
-      case _ => false
+      case IfThenElse => 3
+      case LogicalNot | UnaryMinus => 1
+      case _ => 2
     }
 
-    predicate IsUnaryOperator() {
-      match this
-      case LogicalNot | UnaryMinus => true
-      case _ => false
-    }
-
-    predicate IsTernaryOperator() {
-      match this
-      case IfThenElse => true
-      case _ => false
-    }
-
-    predicate CompatibleWith(args: seq<M.Any>) {
-      if IsTernaryOperator() then
-        |args| == 3 && M.IsBool(args[0]) && 
-          // TODO: Fix
-          M.InferType(args[1]) == M.InferType(args[2])
-      else if IsUnaryOperator() then
-        |args| == 1 && 
-          if IsBoolOperator() then
-             M.IsBool(args[0])
-          else if IsIntOperator() then
-            M.IsInt(args[0])
-          else false
-      else if IsBinaryOperator() then
-        |args| == 2 && 
-          if IsBoolOperator() then
-            M.IsBool(args[0]) && M.IsBool(args[1])
-          else if IsIntOperator() then
-            M.IsInt(args[0]) && M.IsInt(args[1])
-          else if IsPolymorphicOperator() then
-            true
-          else false
-      else false
-    }
-
-    ghost predicate CompatibleWithISet(args: seq<iset<M.Any>>) {
-      if IsTernaryOperator() then
-        |args| == 3 && M.IsBoolSet(args[0]) && M.IsBoolSet(args[1]) && M.IsBoolSet(args[2])
-      else if IsUnaryOperator() then
-        |args| == 1 && 
-          if IsBoolOperator() then
-             M.IsBoolSet(args[0])
-          else if IsIntOperator() then
-            M.IsIntSet(args[0])
-          else false
-      else if IsBinaryOperator() then
-        |args| == 2 && 
-          if IsBoolOperator() then
-            M.IsBoolSet(args[0]) && M.IsBoolSet(args[1])
-          else if IsIntOperator() then
-            M.IsIntSet(args[0]) && M.IsIntSet(args[1])
-          else if IsPolymorphicOperator() then
-            true
-          else false
-      else false
-    }
-
-    opaque function Eval(args: seq<M.Any>): Option<M.Any>
+    function ToBinaryFunc(): (M.Any, M.Any) --> M.Any
+      requires Arity() == 2
     {
-      if !CompatibleWith(args) then None
-      else if IsTernaryOperator() then
-        if M.IsBool(args[0]) then Some(args[0]) else Some(args[1])
-      else if IsUnaryOperator() && IsBoolOperator() then
-        Some(ToBoolUnaryFunc()(args[0]))
-      else if IsUnaryOperator() && IsIntOperator() then
-        Some(ToIntUnaryFunc()(args[0]))
-      else if IsBinaryOperator() && IsBoolOperator() then
-        Some(ToBoolBinaryFunc()(args[0], args[1]))
-      else if IsBinaryOperator() && IsIntOperator() then
-        Some(ToIntBinaryFunc()(args[0], args[1]))
-      else if IsBinaryOperator() && IsPolymorphicOperator() then
-        Some(ToPolymorphicBinaryFunc()(args[0], args[1]))
-      else None
+      match this {
+        case Equiv => M.Equiv
+        case LogicalImp => M.Implies
+        case LogicalAnd => M.LogicAnd
+        case LogicalOr => M.Or
+        case Eql => M.Eql
+        case Neql => M.Neql
+        case Less => M.Less
+        case AtMost => M.AtMost
+        case Plus => M.Plus
+        case Minus => M.Minus
+        case Times => M.Times
+        case Div => M.Div
+        case Mod => M.Mod
+      }
+    }
+
+    function Type(): M.Type 
+      requires !IfThenElse?
+      requires !Eql?
+      requires !Neql?
+    {
+      match this {
+        case LogicalNot | Equiv | LogicalImp | LogicalAnd | LogicalOr => M.Bool
+        case _ => M.Int
+      }
+    }
+
+    function ToUnaryFunc(): M.Any --> M.Any
+      requires Arity() == 1
+    {
+      match this {
+        case LogicalNot => M.Not
+        case UnaryMinus => M.Negate
+      }
     }
 
     predicate IsIntOperator() {
       match this
-      case Plus | Minus | Times | Div | Mod | Less | AtMost => true
+      case Plus | Minus | Times | Div | Mod | Less | AtMost | UnaryMinus => true
       case _ => false
     }
 
     predicate IsBoolOperator() {
       match this
-      case Equiv | LogicalImp | LogicalAnd | LogicalOr => true
+      case Equiv | LogicalImp | LogicalAnd | LogicalOr | LogicalNot => true
       case _ => false
     }
 
@@ -124,68 +89,38 @@ module Expr {
       case Eql | Neql => true
       case _ => false
     }
-    
 
-    function ToBoolUnaryFunc(): M.BoolUnaryFunc 
-      requires IsUnaryOperator()
-      requires IsBoolOperator()
-    {
-      match this {
-        case LogicalNot => M.Not
-      }
+
+    predicate CompatibleWith(args: seq<M.Any>) {
+      |args| == Arity() &&
+      match this
+      case IfThenElse => M.IsBool(args[0])
+      case Eql | Neql => true 
+      case _ => 
+        if Type() == M.Int then
+          && (forall i :: 0 <= i < |args| ==> M.IsInt(args[i]))
+          && (Div? || Mod? ==> M.ToInt(args[1]) != 0)
+        else if Type() == M.Bool then
+          forall i :: 0 <= i < |args| ==> M.IsBool(args[i])
+        else false
     }
 
-    function ToBoolBinaryFunc(): M.BoolBinaryFunc 
-      requires IsBinaryOperator()
-      requires IsBoolOperator()
+    opaque function Eval(args: seq<M.Any>): Option<M.Any>
     {
-      match this {
-        case Equiv => M.Equiv
-        case LogicalImp => M.Implies
-        case LogicalAnd => M.LogicAnd
-        case LogicalOr => M.Or
-      }
-    }
-
-    function ToIntUnaryFunc(): M.IntUnaryFunc 
-      requires IsUnaryOperator()
-      requires IsIntOperator()
-    {
-      match this {
-        case UnaryMinus => M.Negate
-      }
-    }
-
-    function ToIntBinaryFunc(): M.IntBinaryFunc 
-      requires IsBinaryOperator()
-      requires IsIntOperator()
-    {
-      match this {
-        case Plus => M.Plus
-        case Minus => M.Minus
-        case Times => M.Times
-        case Div => M.Div
-        case Mod => M.Mod
-        case Less => M.Less
-        case AtMost => M.AtMost
-      }
-    }
-
-    function ToPolymorphicBinaryFunc(): M.BinaryFunc 
-      requires IsBinaryOperator()
-      requires IsPolymorphicOperator()
-    {
-      match this {
-        case Eql => M.Eql
-        case Neql => M.Neql
-      }
+      if !CompatibleWith(args) then None
+      else if Arity() == 3 then
+        if M.IsBool(args[0]) then Some(args[0]) else Some(args[1])
+      else if Arity() == 1 then
+        Some(ToUnaryFunc()(args[0]))
+      else if Arity() == 2 then
+        Some(ToBinaryFunc()(args[0], args[1]))
+      else None
     }
 
     greatest predicate RefEval(args: seq<M.Any>, outs: iset<M.Any>)
     {
       Eval(args).Some? ==> Eval(args).value in outs
     }
-      
   }
 
   lemma EqlEvalLemma(v1: M.Any, v2: M.Any)
