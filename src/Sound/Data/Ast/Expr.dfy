@@ -18,11 +18,15 @@ module Expr {
     | LogicalNot
     | UnaryMinus
   {
-    function ArgumentCount(): nat {
-      match this
-      case IfThenElse => 3
-      case LogicalNot | UnaryMinus => 1
-      case _ => 2
+    function Type(): M.Type 
+      requires !IfThenElse?
+      requires !Eql?
+      requires !Neql?
+    {
+      match this {
+        case LogicalNot | Equiv | LogicalImp | LogicalAnd | LogicalOr => M.Bool
+        case _ => M.Int
+      }
     }
 
     function Arity() : nat {
@@ -52,17 +56,6 @@ module Expr {
       }
     }
 
-    function Type(): M.Type 
-      requires !IfThenElse?
-      requires !Eql?
-      requires !Neql?
-    {
-      match this {
-        case LogicalNot | Equiv | LogicalImp | LogicalAnd | LogicalOr => M.Bool
-        case _ => M.Int
-      }
-    }
-
     function ToUnaryFunc(): M.Any --> M.Any
       requires Arity() == 1
     {
@@ -71,25 +64,6 @@ module Expr {
         case UnaryMinus => M.Negate
       }
     }
-
-    predicate IsIntOperator() {
-      match this
-      case Plus | Minus | Times | Div | Mod | Less | AtMost | UnaryMinus => true
-      case _ => false
-    }
-
-    predicate IsBoolOperator() {
-      match this
-      case Equiv | LogicalImp | LogicalAnd | LogicalOr | LogicalNot => true
-      case _ => false
-    }
-
-    predicate IsPolymorphicOperator() {
-      match this
-      case Eql | Neql => true
-      case _ => false
-    }
-
 
     predicate CompatibleWith(args: seq<M.Any>) {
       |args| == Arity() &&
