@@ -182,9 +182,48 @@ module Expr {
       && if IsUninterpreted() then
           M.InterpFunctionOn(ToFunction(), args) in outs
         else
-          GetDef().RefEval(args as State, outs)
+          GetDef().RefEval(ToState(args), outs)
     }
 
+    predicate Valid()
+      reads *
+    {
+      !IsUninterpreted() ==> GetDef().IsDefinedOn(|Parameters|)
+    }
+
+    ghost predicate IsSound()
+      requires Valid()
+      reads *
+    {
+      !IsUninterpreted() ==> 
+        forall args: seq<M.Any> | ArgsCompatibleWith(args) :: 
+          GetDef().Eval(ToState(args)) == Some(M.InterpFunctionOn(ToFunction(), args))
+    }
+
+    function FunctionsCalled(): set<Function>
+      reads *
+    {
+      if IsUninterpreted() then {} else GetDef().FunctionsCalled()
+    }
+
+    greatest lemma EvalSound(args: seq<M.Any>, funs: set<Function>)
+      requires EvalArgs(args).Some?
+      requires forall func <- funs :: func.Valid()
+      requires forall func <- funs :: func.IsSound()
+      requires forall func <- funs :: func.FunctionsCalled() <= funs
+      requires this in funs
+      ensures RefEval(args, iset{EvalArgs(args).value})
+    {
+      if !IsUninterpreted() {
+        assert ArgsCompatibleWith(args);
+        GetDef().EvalSound(ToState(args), funs);
+        // calc {
+        //   RefEval(args, iset{EvalArgs(args).value});
+        //   == 
+        //   GetDef().RefEval(ToState(args), iset{EvalArgs(args).value});
+        // }
+      }
+    }
   }
 
   datatype Expr =
@@ -215,6 +254,22 @@ module Expr {
       Depth() <= d
     }
 
+    function FunctionsCalled(): set<Function>
+    {
+      match this
+      case FunctionCallExpr(func, args) => {func} + SeqFunctionsCalled(args)
+      case OperatorExpr(op, args) => SeqFunctionsCalled(args)
+      case QuantifierExpr(univ, v, tp, body) => body.FunctionsCalled()
+      case LetExpr(v, rhs, body) => rhs.FunctionsCalled() + body.FunctionsCalled()
+      case _ => {}
+    }
+
+    predicate ValidCalls()
+      reads *
+    {
+      forall func <- FunctionsCalled() :: func.Valid()
+    }
+
     ghost function Eval(s: State): Option<M.Any>
       requires IsDefinedOn(|s|)
     {
@@ -230,13 +285,19 @@ module Expr {
         var args :- SeqEval(args, s);
         func.EvalArgs(args)
       case QuantifierExpr(true, v, typ, body) =>
-        Some(M.InterpBool(forall x: M.Any | M.HasType(x, typ.ToType()) :: 
-          body.Eval(s.Update([x])) == Some(M.True)
-        ))
+        if (forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+            SomeBVal?(body.Eval(s.Update([x])))) then 
+          Some(M.InterpBool(forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+            body.Eval(s.Update([x])) == Some(M.True)
+          ))
+        else None
       case QuantifierExpr(false, v, typ, body) =>
-        Some(M.InterpBool(exists x: M.Any | M.HasType(x, typ.ToType()) :: 
-          body.Eval(s.Update([x])) == Some(M.True)
-        ))
+        if (forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+            SomeBVal?(body.Eval(s.Update([x])))) then 
+          Some(M.InterpBool(exists x: M.Any | M.HasType(x, typ.ToType()) :: 
+            body.Eval(s.Update([x])) == Some(M.True)
+          ))
+        else None
       case LetExpr(v, rhs, body) => 
         var x :- rhs.Eval(s);
         body.Eval(s.Update([x]))
@@ -263,18 +324,61 @@ module Expr {
           && rhs.RefEval(s, outsRhs)
           && forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
       case QuantifierExpr(true, v, tp, body) => 
-        forall x: M.Any | M.HasType(x, tp.ToType()) :: 
-          body.RefEval(s.Update([x]), outs * iset{M.True, M.False})
+        (M.True in outs &&
+          forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset{M.True}))
+        ||
+        (M.False in outs &&
+          exists x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset{M.False}))
       case QuantifierExpr(false, v, tp, body) =>
-        exists x: M.Any | M.HasType(x, tp.ToType()) :: 
-          body.RefEval(s.Update([x]), outs * iset{M.True, M.False})
+        (M.True in outs &&
+          exists x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset{M.True}))
+        ||
+        (M.False in outs &&
+          forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset{M.False}))
     }
 
-    lemma EvalSound(s: State)
+    greatest lemma EvalSound(s: State, funs: set<Function>)
+      requires FunctionsCalled() <= funs
+      requires forall func <- funs :: func.Valid()
+      requires forall func <- funs :: func.IsSound()
+      requires forall func <- funs :: func.FunctionsCalled() <= funs
       requires IsDefinedOn(|s|)
-      ensures RefEval(s, iset v: M.Any | Eval(s) == Some(v))
+      requires Eval(s).Some?
+      requires ValidCalls()
+      ensures RefEval(s, iset{Eval(s).value})
     {
-
+      match this
+      case OperatorExpr(op, args) => 
+        SeqEvalSound(args, s, funs);
+        CrossProductSeqSingleton(SeqEval(args, s).value);
+      case FunctionCallExpr(func, args) => 
+        SeqEvalSound(args, s, funs);
+        CrossProductSeqSingleton(SeqEval(args, s).value);
+        func.EvalSound(SeqEval(args, s).value, funs);
+      case LetExpr(v, rhs, body) => rhs.EvalSound(s, funs);
+      case QuantifierExpr(true, v, typ, body) => 
+        assert forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+          SomeBVal?(body.Eval(s.Update(Singleton(x))));
+        if !(forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+          body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
+          var x: M.Any :| M.HasType(x, typ.ToType()) &&
+            body.Eval(s.Update(Singleton(x))) != Some(M.True);
+          M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
+        }
+      case QuantifierExpr(false, v, tp, body) => 
+        assert forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+          SomeBVal?(body.Eval(s.Update(Singleton(x))));
+        if !(exists x: M.Any | M.HasType(x, tp.ToType()) :: 
+          body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
+          forall x: M.Any | M.HasType(x, tp.ToType()) {
+            M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
+          }
+        }
+      case _ =>
     }
 
     ghost predicate HoldsOn(s: State) 
@@ -310,10 +414,29 @@ module Expr {
     }
   }
 
+  function SeqFunctionsCalled(ss: seq<Expr>): set<Function>
+  {
+    if ss == [] then {} else ss[0].FunctionsCalled() + SeqFunctionsCalled(ss[1..])
+  }
+
   ghost function CrossProduct<T(!new)>(ss: seq<iset<T>>): iset<seq<T>> {
     iset s | 
       && |s| == |ss|
       && forall i: nat | i < |ss| :: s[i] in ss[i]
+  }
+
+  function SeqSingleton(s: seq): seq<iset> {
+    seq(|s|, (i: nat) requires i < |s| => iset{s[i]})
+  }
+
+  lemma SeqSingletonCons<T>(s: T, ss: seq)
+    ensures SeqSingleton([s] + ss) == [iset{s}] + SeqSingleton(ss)
+  { }
+
+  lemma CrossProductSeqSingleton<T(!new)>(ss: seq)
+    ensures CrossProduct(SeqSingleton(ss)) == iset{ss}
+  {
+    forall s <- CrossProduct(SeqSingleton(ss)) ensures s == ss { }
   }
 
   greatest predicate RefSeqEval(ss: seq<Expr>, s: State, outSeqs: seq<iset<M.Any>>) 
@@ -327,12 +450,28 @@ module Expr {
 
   ghost function SeqEval(ss: seq<Expr>, s: State): Option<seq<M.Any>>
     requires forall e <- ss :: e.IsDefinedOn(|s|)
-    // ensures |SeqEval(ss, s)| == |ss|
+    ensures SeqEval(ss, s).Some? ==> |SeqEval(ss, s).value| == |ss|
   {
     if ss == [] then Some([]) else
     var e :- ss[0].Eval(s);
     var es :- SeqEval(ss[1..], s);
     Some([e] + es)
+  }
+
+  greatest lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>)
+    requires forall e <- ss :: e.IsDefinedOn(|s|)
+    requires SeqEval(ss, s).Some?
+    requires forall func <- funs :: func.Valid()
+    requires forall func <- funs :: func.IsSound()
+    requires forall func <- funs :: func.FunctionsCalled() <= funs
+    requires SeqFunctionsCalled(ss) <= funs
+    ensures RefSeqEval(ss, s, SeqSingleton(SeqEval(ss, s).value))  
+  {
+    if ss != [] {
+      ss[0].EvalSound(s, funs);
+      SeqEvalSound(ss[1..], s, funs);
+      SeqSingletonCons(ss[0].Eval(s).value, SeqEval(ss[1..], s).value);
+    }
   }
 
   lemma SeqEval1(e: Expr, s: State)

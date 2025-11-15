@@ -5,7 +5,7 @@ module Model {
       InterpLiteral, InferType, Bot,
       InterpInt, InterpBool, ToInt, ToBool,
       Not, Equiv, Or, Negate, Plus, Minus, Times, Div, Mod, Less, 
-      AtMost, NoEmptyTypes, InterpFunctionOn
+      AtMost, NoEmptyTypes, InterpFunctionOn, BoolIsTrueOrFalse
     reveals Any, True, False, LogicAnd, IsBool, IsInt, HasType, Implies, 
       Literal, FunctionSig, Function, Type, Int, Bool, Eql, Neql, IsBoolSet, IsIntSet,
       HaveTypes
@@ -173,4 +173,11 @@ module Model {
   function {:axiom} InterpFunctionOn(func: Function, args: seq<Any>): Any
     requires HaveTypes(args, func.sig)
     ensures HasType(InterpFunctionOn(func, args), func.resultType)
+
+  lemma BoolIsTrueOrFalse(x: Any)
+    requires IsBool(x)
+    ensures x == True || x == False
+  {
+    assert x == InterpBool(ToBool(x));
+  }
 }

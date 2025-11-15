@@ -3,17 +3,27 @@ module State {
   import opened Std.Wrappers
   import opened Model
 
-  // function SomeBVal?(o: Option<M.Any>): bool {
-  //   match o
-  //   case Some(b) => IsBool(b)
-  //   case _ => false
-  // }
+  function SomeBVal?(o: Option<Any>): bool {
+    match o
+    case Some(b) => IsBool(b)
+    case _ => false
+  }
 
   // function SomeBValTrue?(o: Option<M.Any>): bool {
   //   match o
   //   case Some(b) => b == True
   //   case _ => false
   // }
+
+  function Singleton(val: Any): State
+  {
+    [val]
+  }
+
+  function ToState(args: seq<Any>): State
+  {
+    args as State
+  }
 
   newtype State = seq<Any> {
     function Update(vals: State): State 
