@@ -387,6 +387,25 @@ module Expr {
       Eval(s) == Some(M.True)
     }
 
+    ghost predicate RefHoldsOn(s: State)
+      reads *
+    {
+      RefEval(s, iset{M.True})
+    }
+
+    lemma HoldsOnSound(s: State, funs: set<Function>)
+      requires FunctionsCalled() <= funs
+      requires forall func <- funs :: func.Valid()
+      requires forall func <- funs :: func.IsSound()
+      requires forall func <- funs :: func.FunctionsCalled() <= funs
+      requires IsDefinedOn(|s|)
+      requires ValidCalls()
+      requires HoldsOn(s)
+      ensures RefHoldsOn(s)
+    {
+      EvalSound(s, funs);
+    }
+
     lemma EvalDepthLemma(s1: State, s2: State) 
       requires IsDefinedOn(|s1|)
       requires IsDefinedOn(|s2|)
