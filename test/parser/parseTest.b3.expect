@@ -263,6 +263,42 @@ procedure Reinit(u: int, inout v: int, out w: int)
   reinit u, v, u, u, v, w
 }
 
+procedure LabelsStartingWithKeyword(cond0: bool, cond1: bool, cond2: bool, cond3: bool)
+{
+  endloop: {
+    if cond0 {
+      exit endloop
+    }
+    stmt0()
+    loop {
+      loopiteration: {
+        if !cond1 {
+          exit
+        }
+        stmt1()
+        if cond2 {
+          exit loopiteration
+        }
+        if cond3 {
+          exit
+        }
+        elselabel: {
+        }
+        stmt2()
+      }
+    }
+  }
+  stmt3()
+}
+
+procedure stmt0()
+
+procedure stmt1()
+
+procedure stmt2()
+
+procedure stmt3()
+
 procedure TheWorldContinuesHere()
 {
 }

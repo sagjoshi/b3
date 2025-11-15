@@ -66,6 +66,32 @@ module Parser {
     )
   }
 
+  function ApplyUnlessFollowedBy<L, R>(main: B<L>, avoid: B<R>, errorMessage: string): B<L>
+    // In short: act like "main", unless "avoid" succeeds after applying "main".
+    // In detail:
+    // Apply "main" and return its result, if
+    //   -- the main application fails, or if
+    //   -- the main application succeeds and subsequently applying "avoid" fails recoverably.
+    // If the main application and the subsequent application of "avoid" both succeed, then
+    // roll back both and report "errorMessage" as a recoverable eror.
+    // If the main application succeeds and the subsequence application of "avoid" fails fatally,
+    // return the fatal error.
+  {
+    B((input: Input) =>
+        var (l, remaining) :- main.apply(input);
+        match avoid.apply(remaining)
+        case ParseFailure(Fatal, data) =>
+          // propagate any fatal error
+          P.ParseFailure(P.Fatal, data)
+        case ParseFailure(Recoverable, data) =>
+          // the bad thing did not happen, so return like "main" did
+          P.ParseSuccess(l, remaining)
+        case ParseSuccess(result, remaining) =>
+          // the bad thing did happened, so unroll "main"
+          P.ParseFailure(P.Recoverable, P.FailureData(errorMessage, input, None))
+    )
+  }
+
   const notNewline :=
     CharTest((c: char) => c !in "\n", "anything except newline")
 
@@ -125,11 +151,7 @@ module Parser {
   // T = token, that is, the string `s` followed by some non-identifier character (the non-identifier character is not consumed)
   // The characters in `s` are expected to be identifier characters
   function T(s: string): B<string> {
-    S(s).I_e(
-      Lookahead(parseIdentifierChar).Then(
-        (opt: Option<char>) =>
-          if opt.Some? then FailWith<()>("keyword followed by identifier character", FailureLevel.Recoverable) else Nothing)
-    )
+    ApplyUnlessFollowedBy(S(s), parseIdentifierChar, "keyword followed by identifier character")
     .I_e(W)
   }
 
