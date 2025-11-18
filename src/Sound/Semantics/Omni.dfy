@@ -193,24 +193,22 @@ module Omni {
   {
     match s
     case Check(e)       => 
-      && e.IsDefinedOn(|st|) 
-      && (e.HoldsOn(st) &&  st in posts.head)
-    case Assume(e)      => 
-      && e.IsDefinedOn(|st|) 
-      && (e.HoldsOn(st) ==> st in posts.head)
+      e.RefHoldsOn(st) &&  st in posts.head
+    case Assume(e)      =>  
+      e.RefEval(st, iset v | v == M.True ==> st in posts.head)
+      // e.RefHoldsOn(st) ==>  st in posts.head
     case Assign(x, v)   => 
       && x < |st|
-      && v.IsDefinedOn(|st|) 
-      && (v.Eval(st).Some? ==> st[x := v.Eval(st).value] in posts.head)
+      && v.RefEval(st, iset v {:trigger} | st[x := v] in posts.head)
     case Call(proc, args) => 
       && RefProcedureIsSound(proc)
       && args.IsDefinedOn(|st|)
       && var callSt := args.Eval(st);
-        && (forall e <- proc.Pre :: e.IsDefinedOn(|callSt|) && e.HoldsOn(callSt))
+        && (forall e <- proc.Pre :: e.RefHoldsOn(callSt))
         && forall st': State :: (
           && st' in st.EqExcept(args.OutArgs())
           && var callSt' := args.Eval(st') + args.EvalOld(st);
-            (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt')))
+            (forall e <- proc.Post :: e.RefHoldsOn(callSt')))
               ==> st' in posts.head
     case Seq(ss)        => SeqRefSem(ss, st, posts)
     case Choice(s0, s1) => RefSem(s0, st, posts) && RefSem(s1, st, posts)
@@ -219,12 +217,6 @@ module Omni {
     case Escape(l)      => |posts| > l && st in posts[l]
     case Loop(inv, body) => RefSem(Seq([body, Loop(inv, body)]), st, posts)
   }
-  /**
-    (e1 + e2).Eval(post) ==
-      exists post1, post2: iset<State> :: 
-        e1.Eval(post1) && e2.Eval(post2) &&
-        forall s1 <- post1, s2 <- post2 :: s1 + s2 in post
-   */
 
   greatest predicate SeqRefSem(ss: seq<Stmt>, st: State, posts: Continuation) 
     reads *

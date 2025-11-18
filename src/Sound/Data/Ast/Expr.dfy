@@ -93,7 +93,7 @@ module Expr {
 
     greatest predicate RefEval(args: seq<M.Any>, outs: iset<M.Any>)
     {
-      Eval(args).Some? ==> Eval(args).value in outs
+      Eval(args).Some? && Eval(args).value in outs
     }
   }
 
@@ -179,10 +179,9 @@ module Expr {
       reads *
     {
       && ArgsCompatibleWith(args)
-      && if IsUninterpreted() then
-          M.InterpFunctionOn(ToFunction(), args) in outs
-        else
-          GetDef().RefEval(ToState(args), outs)
+      && var fval := M.InterpFunctionOn(ToFunction(), args);
+        && fval in outs
+        && (!IsUninterpreted() ==> GetDef().RefEval(ToState(args), iset{fval}))
     }
 
     predicate Valid()
@@ -197,7 +196,7 @@ module Expr {
     {
       !IsUninterpreted() ==> 
         forall args: seq<M.Any> | ArgsCompatibleWith(args) :: 
-          GetDef().Eval(ToState(args)) == Some(M.InterpFunctionOn(ToFunction(), args))
+          GetDef().RefEval(ToState(args), iset{M.InterpFunctionOn(ToFunction(), args)})
     }
 
     function FunctionsCalled(): set<Function>
@@ -206,7 +205,7 @@ module Expr {
       if IsUninterpreted() then {} else GetDef().FunctionsCalled()
     }
 
-    greatest lemma EvalSound(args: seq<M.Any>, funs: set<Function>)
+    lemma EvalSound(args: seq<M.Any>, funs: set<Function>)
       requires EvalArgs(args).Some?
       requires forall func <- funs :: func.Valid()
       requires forall func <- funs :: func.IsSound()
@@ -216,7 +215,7 @@ module Expr {
     {
       if !IsUninterpreted() {
         assert ArgsCompatibleWith(args);
-        GetDef().EvalSound(ToState(args), funs);
+        // GetDef().EvalSound(ToState(args), funs);
         // calc {
         //   RefEval(args, iset{EvalArgs(args).value});
         //   == 
@@ -341,7 +340,7 @@ module Expr {
             body.RefEval(s.Update([x]), iset{M.False}))
     }
 
-    greatest lemma EvalSound(s: State, funs: set<Function>)
+    lemma EvalSound(s: State, funs: set<Function>)
       requires FunctionsCalled() <= funs
       requires forall func <- funs :: func.Valid()
       requires forall func <- funs :: func.IsSound()
@@ -380,6 +379,126 @@ module Expr {
         }
       case _ =>
     }
+
+    // ghost predicate LetRefEval(outsRhs: iset<M.Any>, rhs: Expr, body: Expr, s: State, outs: iset<M.Any>) 
+    //   reads *
+    // {
+    //   && rhs.RefEval(s, outsRhs)
+    //   && forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
+    // }
+
+    // lemma RefEvalEmpty(s: State)
+    //   requires RefEval(s, iset{})
+    //   ensures false
+    // {
+    //   match this
+    //   case OperatorExpr(op, args) =>
+    //     var outArgsSet :| 
+    //       && RefSeqEval(args, s, outArgsSet)
+    //       && (forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, iset{}));
+    //     SeqRefEvalEmpty(args, s, outArgsSet);
+    //   case FunctionCallExpr(func, args) =>
+    //     var outArgsSet :| 
+    //       && RefSeqEval(args, s, outArgsSet)
+    //       && (forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, iset{}));
+    //     SeqRefEvalEmpty(args, s, outArgsSet);
+    //   case LetExpr(v, rhs, body) =>
+    //     var outsRhs :| LetRefEval(outsRhs, rhs, body, s, iset{}) by {
+    //       assert forall outsRhs: iset<M.Any> :: 
+    //         LetRefEval(outsRhs, rhs, body, s, iset{}) == (rhs.RefEval(s, outsRhs) && 
+    //           forall out <- outsRhs :: body.RefEval(s.Update([out]), iset{}));
+    //     }
+    //     assert LetRefEval(outsRhs, rhs, body, s, iset{}) == (rhs.RefEval(s, outsRhs) && 
+    //       forall out <- outsRhs :: body.RefEval(s.Update([out]), iset{}));
+    //     if outsRhs == iset{} {
+    //       rhs.RefEvalEmpty(s);
+    //     } else {
+    //       var x :| x in outsRhs;
+    //       body.RefEvalEmpty(s.Update([x]));
+    //     }
+    //   case QuantifierExpr(true, v, tp, body) =>
+    //   case QuantifierExpr(false, v, tp, body) =>
+    //   case _ =>
+    // }
+
+    // lemma RefEvalInter(s: State, funs: set<Function>, outs1: iset<M.Any>, outs2: iset<M.Any>)
+    //   requires FunctionsCalled() <= funs
+    //   requires forall func <- funs :: func.Valid()
+    //   requires forall func <- funs :: func.IsSound()
+    //   requires forall func <- funs :: func.FunctionsCalled() <= funs
+    //   requires RefEval(s, outs1)
+    //   requires RefEval(s, outs2)
+    //   ensures RefEval(s, outs1 * outs2)
+    // {
+    //   match this
+    //   case OperatorExpr(op, args) =>
+    //     var outArgsSet1: seq<iset<M.Any>> :| 
+    //       && RefSeqEval(args, s, outArgsSet1)
+    //       && (forall outArgs <- CrossProduct(outArgsSet1) :: op.RefEval(outArgs, outs1));
+    //     var outArgsSet2: seq<iset<M.Any>> :| 
+    //       && RefSeqEval(args, s, outArgsSet2)
+    //       && (forall outArgs <- CrossProduct(outArgsSet2) :: op.RefEval(outArgs, outs2));
+    //     SeqRefEvalInter(args, s, funs, outArgsSet1, outArgsSet2);
+    //     CrossProductInter(outArgsSet1, outArgsSet2);
+    //   case FunctionCallExpr(func, args) =>
+    //     var outArgsSet1: seq<iset<M.Any>> :| 
+    //       && RefSeqEval(args, s, outArgsSet1)
+    //       && (forall outArgs <- CrossProduct(outArgsSet1) :: func.RefEval(outArgs, outs1));
+    //     var outArgsSet2: seq<iset<M.Any>> :| 
+    //       && RefSeqEval(args, s, outArgsSet2)
+    //       && (forall outArgs <- CrossProduct(outArgsSet2) :: func.RefEval(outArgs, outs2));
+    //     SeqRefEvalInter(args, s, funs, outArgsSet1, outArgsSet2);
+    //     CrossProductInter(outArgsSet1, outArgsSet2);
+    //   case LetExpr(v, rhs, body) =>
+    //     var outsRhs1: iset<M.Any> :| LetRefEval(outsRhs1, rhs, body, s, outs1) by {
+    //       assert forall outsRhs1: iset<M.Any> :: 
+    //         LetRefEval(outsRhs1, rhs, body, s, outs1) == (rhs.RefEval(s, outsRhs1) 
+    //         && forall out <- outsRhs1 :: body.RefEval(s.Update([out]), outs1));
+    //     }
+    //     var outsRhs2: iset<M.Any> :| LetRefEval(outsRhs2, rhs, body, s, outs2) by {
+    //       assert forall outsRhs2: iset<M.Any> :: 
+    //          LetRefEval(outsRhs2, rhs, body, s, outs2) == (rhs.RefEval(s, outsRhs2) && 
+    //            forall out <- outsRhs2 :: body.RefEval(s.Update([out]), outs2));
+    //     }
+    //     assert LetRefEval(outsRhs2, rhs, body, s, outs2) == (rhs.RefEval(s, outsRhs2) && 
+    //       forall out <- outsRhs2 :: body.RefEval(s.Update([out]), outs2));
+    //     assert LetRefEval(outsRhs1, rhs, body, s, outs1) == (rhs.RefEval(s, outsRhs1) 
+    //       && forall out <- outsRhs1 :: body.RefEval(s.Update([out]), outs1));
+    //     rhs.RefEvalInter(s, funs, outsRhs1, outsRhs2);
+    //   case QuantifierExpr(true, v, typ, body) => 
+    //     if (forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+    //         body.RefEval(s.Update([x]), iset{M.True})) {
+    //       forall x: M.Any | 
+    //         && M.HasType(x, tp.ToType())
+    //         && body.RefEval(s.Update([x]), iset{M.False})
+    //         ensures false 
+    //       {
+    //         body.RefEvalInter(s.Update([x]), funs, iset{M.True}, iset{M.False});
+    //         body.RefEvalEmpty(s.Update([x])) by {
+    //           assert iset{M.True} * iset{M.False} == iset{} by {
+    //             M.TrueNotFalse();
+    //           }
+    //         }
+    //       }
+    //     }
+    //   case QuantifierExpr(false, v, tp, body) => 
+    //     if (exists x: M.Any | M.HasType(x, tp.ToType()) :: 
+    //       body.RefEval(s.Update([x]), iset{M.True})) {
+    //       var x :| M.HasType(x, tp.ToType()) &&
+    //         body.RefEval(s.Update([x]), iset{M.True});
+    //       if body.RefEval(s.Update([x]), iset{M.False}) {
+    //         assert false by {
+    //           body.RefEvalInter(s.Update([x]), funs, iset{M.True}, iset{M.False});
+    //           body.RefEvalEmpty(s.Update([x])) by {
+    //             assert iset{M.True} * iset{M.False} == iset{} by {
+    //               M.TrueNotFalse();
+    //             }
+    //           }
+    //         }
+    //       }
+    //     } 
+    //   case _ =>
+    // }
 
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
@@ -477,7 +596,7 @@ module Expr {
     Some([e] + es)
   }
 
-  greatest lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>)
+  lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>)
     requires forall e <- ss :: e.IsDefinedOn(|s|)
     requires SeqEval(ss, s).Some?
     requires forall func <- funs :: func.Valid()
@@ -492,6 +611,36 @@ module Expr {
       SeqSingletonCons(ss[0].Eval(s).value, SeqEval(ss[1..], s).value);
     }
   }
+
+  // function SeqInter(ss1: seq<iset>, ss2: seq<iset>): seq<iset> 
+  //   requires |ss1| == |ss2|
+  // {
+  //   seq(|ss1|, (i: nat) requires i < |ss1| => ss1[i] * ss2[i])
+  // }
+
+  // lemma CrossProductInter<T(!new)>(ss1: seq<iset<T>>, ss2: seq<iset<T>>)
+  //   requires |ss1| == |ss2|
+  //   ensures CrossProduct(ss1) * CrossProduct(ss2) == CrossProduct(SeqInter(ss1, ss2))
+  // {  }
+
+  // lemma SeqRefEvalEmpty(ss: seq<Expr>, s: State, outSeqs: seq<iset<M.Any>>)
+  //   requires RefSeqEval(ss, s, outSeqs)
+  //   ensures CrossProduct(outSeqs) != iset{}
+  // {
+
+  // }
+
+  // lemma SeqRefEvalInter(ss: seq<Expr>, s: State, funs: set<Function>, outSeqs1: seq<iset<M.Any>>, outSeqs2: seq<iset<M.Any>>)
+  //   requires forall func <- funs :: func.Valid()
+  //   requires forall func <- funs :: func.IsSound()
+  //   requires forall func <- funs :: func.FunctionsCalled() <= funs
+  //   requires RefSeqEval(ss, s, outSeqs1)
+  //   requires RefSeqEval(ss, s, outSeqs2)
+  //   ensures |ss| == |outSeqs1| == |outSeqs2|
+  //   ensures RefSeqEval(ss, s, SeqInter(outSeqs1, outSeqs2))
+  // {
+
+  // }
 
   lemma SeqEval1(e: Expr, s: State)
     requires e.IsDefinedOn(|s|)

@@ -531,11 +531,23 @@ module VCGenOmni {
     set x | x in s
   }
 
+/*  
+  e.HoldsWithAxiom(axioms) <==> "pick a A <= axioms", A => e
+
+   + requires Axioms.Holds()
+   ensures (forall e <- VCs :: e.HoldsAxioms(axioms)) ==> 
+      forall proc <- procs :: Omni.RefProcedureIsSound(proc)
+ */
+
   method VCGenProcs(procs: seq<Procedure>) returns (VCs: seq<Expr>)
     requires forall proc <- procs :: proc.Valid()
     requires forall proc <- procs :: proc.ProceduresCalled() <= SetOfSeq(procs)
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
+    /** 
+      UniversallClosure(VCs).Eval(State.empty, iset v | v == M.True ==>
+         forall proc <- procs :: Omni.RefProcedureIsSound(proc)
+    */
   {
     VCs := [];
     var VCs';

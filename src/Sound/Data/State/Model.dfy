@@ -5,7 +5,7 @@ module Model {
       InterpLiteral, InferType, Bot,
       InterpInt, InterpBool, ToInt, ToBool,
       Not, Equiv, Or, Negate, Plus, Minus, Times, Div, Mod, Less, 
-      AtMost, NoEmptyTypes, InterpFunctionOn, BoolIsTrueOrFalse
+      AtMost, NoEmptyTypes, InterpFunctionOn, BoolIsTrueOrFalse, TrueNotFalse
     reveals Any, True, False, LogicAnd, IsBool, IsInt, HasType, Implies, 
       Literal, FunctionSig, Function, Type, Int, Bool, Eql, Neql, IsBoolSet, IsIntSet,
       HaveTypes
@@ -65,6 +65,9 @@ module Model {
 
   const True: Any := InterpBool(true)
   const False: Any := InterpBool(false)
+
+  lemma {:axiom} TrueNotFalse()
+    ensures True != False
 
   function Eql(x: Any, y: Any): Any
   {
