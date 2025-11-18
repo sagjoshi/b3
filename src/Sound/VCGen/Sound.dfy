@@ -539,9 +539,12 @@ module VCGenOmni {
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
  */
 
-  method VCGenProcs(procs: seq<Procedure>) returns (VCs: seq<Expr>)
+  method VCGenProcs(procs: seq<Procedure>, funcs: seq<Function>) returns (VCs: seq<Expr>)
     requires forall proc <- procs :: proc.Valid()
     requires forall proc <- procs :: proc.ProceduresCalled() <= SetOfSeq(procs)
+    requires forall func <- funcs :: func.FunctionsCalled() <= SetOfSeq(funcs)
+    requires forall proc <- procs :: proc.FunctionsCalled() <= SetOfSeq(funcs)
+    requires forall func <- funcs :: func.IsSound()
     ensures (forall e <- VCs :: e.Holds()) ==> 
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
     /** 
@@ -560,7 +563,7 @@ module VCGenOmni {
       VCs := VCs + VCs';
     }
     if (forall e <- VCs :: e.Holds()) {
-      // Omni.SemSoundProcs(SetOfSeq(procs));
+      Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs));
     }
   }
 }

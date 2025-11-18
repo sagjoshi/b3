@@ -190,6 +190,11 @@ module Expr {
       !IsUninterpreted() ==> GetDef().IsDefinedOn(|Parameters|)
     }
 
+    // function BodyAxiom'(params: seq<FParameter>): Expr {
+    //   if params == [] then 
+    //     Eq
+    // }
+
     ghost predicate IsSound()
       // requires Valid()
       reads *
