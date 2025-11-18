@@ -512,18 +512,18 @@ module Omni {
     }
   }
 
-  lemma SemSoundProcs(procs: set<Procedure>, funs: set<Function>)
+  lemma SemSoundProcs(procs: set<Procedure>, funcs: set<Function>)
     requires forall proc <- procs :: proc.Valid()
     requires forall proc <- procs :: ProcedureIsSound(proc)
+    requires forall func <- funcs :: func.IsSound()
     requires forall proc <- procs :: proc.ProceduresCalled() <= procs
+    requires forall proc <- procs :: proc.FunctionsCalled() <= funcs
+    requires forall func <- funcs :: func.FunctionsCalled() <= funcs
     ensures  forall proc <- procs :: RefProcedureIsSound(proc)
-    requires forall p <- procs :: p.FunctionsCalled() <= funs
-    requires forall f <- funs :: f.FunctionsCalled() <= funs
-    requires forall f <- funs :: f.IsSound()
   {
     forall proc <- procs 
       ensures RefProcedureIsSound(proc) {
-      SemSoundProc(proc, procs, funs);
+      SemSoundProc(proc, procs, funcs);
     }
   }
 
