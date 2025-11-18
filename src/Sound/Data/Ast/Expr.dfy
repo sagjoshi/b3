@@ -323,182 +323,192 @@ module Expr {
           && rhs.RefEval(s, outsRhs)
           && forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
       case QuantifierExpr(true, v, tp, body) => 
-        (M.True in outs &&
+        (forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset v | M.IsBool(v)))
+        &&
+        ((M.True in outs &&
           forall x: M.Any | M.HasType(x, tp.ToType()) :: 
             body.RefEval(s.Update([x]), iset{M.True}))
         ||
         (M.False in outs &&
           exists x: M.Any | M.HasType(x, tp.ToType()) :: 
-            body.RefEval(s.Update([x]), iset{M.False}))
+            body.RefEval(s.Update([x]), iset{M.False})))
       case QuantifierExpr(false, v, tp, body) =>
-        (M.True in outs &&
+        (forall x: M.Any | M.HasType(x, tp.ToType()) :: 
+            body.RefEval(s.Update([x]), iset v | M.IsBool(v)))
+        &&
+        ((M.True in outs &&
           exists x: M.Any | M.HasType(x, tp.ToType()) :: 
             body.RefEval(s.Update([x]), iset{M.True}))
         ||
         (M.False in outs &&
           forall x: M.Any | M.HasType(x, tp.ToType()) :: 
-            body.RefEval(s.Update([x]), iset{M.False}))
+            body.RefEval(s.Update([x]), iset{M.False})))
     }
 
-    lemma EvalSound(s: State, funs: set<Function>)
+    ghost predicate LetRefEval(s: State, rhs: Expr, body: Expr, outsRhs: iset<M.Any>, outs: iset<M.Any>)
+      reads *
+    {
+      forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
+    }
+
+    lemma LetRefEvalUnfold(s: State, rhs: Expr, body: Expr, outs: iset<M.Any>, v: Variable) returns (outsRhs: iset<M.Any>)
+      requires LetExpr(v, rhs, body).RefEval(s, outs)
+      ensures rhs.RefEval(s, outsRhs)
+      ensures forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
+    {
+      var outsRhs' :| rhs.RefEval(s, outsRhs') &&
+        LetRefEval(s, rhs, body, outsRhs', outs);
+      outsRhs := outsRhs';
+      forall out | out in outsRhs ensures body.RefEval(s.Update([out]), outs) {
+        assert LetRefEval(s, rhs, body, outsRhs, outs) ==> forall out <- outsRhs :: body.RefEval(s.Update([out]), outs);
+      }
+    }
+
+    lemma EvalSound(s: State, funs: set<Function>, outs: iset<M.Any>)
       requires FunctionsCalled() <= funs
       requires forall func <- funs :: func.Valid()
       requires forall func <- funs :: func.IsSound()
       requires forall func <- funs :: func.FunctionsCalled() <= funs
       requires IsDefinedOn(|s|)
-      requires Eval(s).Some?
       requires ValidCalls()
-      ensures RefEval(s, iset{Eval(s).value})
+      ensures RefEval(s, outs) == ISetOptionEq(Eval(s), outs)
     {
       match this
       case OperatorExpr(op, args) => 
-        SeqEvalSound(args, s, funs);
-        CrossProductSeqSingleton(SeqEval(args, s).value);
-      case FunctionCallExpr(func, args) => 
-        SeqEvalSound(args, s, funs);
-        CrossProductSeqSingleton(SeqEval(args, s).value);
-        func.EvalSound(SeqEval(args, s).value, funs);
-      case LetExpr(v, rhs, body) => rhs.EvalSound(s, funs);
-      case QuantifierExpr(true, v, typ, body) => 
-        assert forall x: M.Any | M.HasType(x, typ.ToType()) :: 
-          SomeBVal?(body.Eval(s.Update(Singleton(x))));
-        if !(forall x: M.Any | M.HasType(x, typ.ToType()) :: 
-          body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
-          var x: M.Any :| M.HasType(x, typ.ToType()) &&
-            body.Eval(s.Update(Singleton(x))) != Some(M.True);
-          M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
-        }
-      case QuantifierExpr(false, v, tp, body) => 
-        assert forall x: M.Any | M.HasType(x, tp.ToType()) :: 
-          SomeBVal?(body.Eval(s.Update(Singleton(x))));
-        if !(exists x: M.Any | M.HasType(x, tp.ToType()) :: 
-          body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
-          forall x: M.Any | M.HasType(x, tp.ToType()) {
-            M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
+        if Eval(s).Some? {
+          if RefEval(s, outs) {
+            assert Eval(s).value in outs by {
+              var outArgsSet :| 
+                && RefSeqEval(args, s, outArgsSet)
+                && (forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, outs)) by {
+                assert RefEval(s, outs);
+              }
+              SeqEvalSound(args, s, funs, outArgsSet);
+            }
+          }
+          if Eval(s).value in outs {
+            assert RefEval(s, outs) by {
+              SeqEvalSound(args, s, funs, SeqSingleton(SeqEval(args, s).value));
+              CrossProductSeqSingleton(SeqEval(args, s).value);
+            }
+          }
+        } else {
+          if RefEval(s, outs) {
+            var outArgsSet :| 
+              && RefSeqEval(args, s, outArgsSet)
+              && (forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, outs)) by {
+              assert RefEval(s, outs);
+            }
+            SeqEvalSound(args, s, funs, outArgsSet);
           }
         }
-      case _ =>
+      case FunctionCallExpr(func, args) => 
+        if Eval(s).Some? {
+          if RefEval(s, outs) {
+            assert Eval(s).value in outs by {
+              var outArgsSet :| 
+                && RefSeqEval(args, s, outArgsSet)
+                && (forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, outs)) by {
+                assert RefEval(s, outs);
+              }
+              SeqEvalSound(args, s, funs, outArgsSet);
+            }
+          }
+          if Eval(s).value in outs {
+            assert RefEval(s, outs) by {
+              SeqEvalSound(args, s, funs, SeqSingleton(SeqEval(args, s).value));
+              CrossProductSeqSingleton(SeqEval(args, s).value);
+            }
+          }
+        } else {
+          if RefEval(s, outs) {
+            var outArgsSet :| 
+              && RefSeqEval(args, s, outArgsSet)
+              && (forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, outs)) by {
+              assert RefEval(s, outs);
+            }
+            SeqEvalSound(args, s, funs, outArgsSet);
+          }
+        }
+      case LetExpr(v, rhs, body) => 
+        if Eval(s).Some? {
+          if RefEval(s, outs) {
+            assert Eval(s).value in outs by {
+              var outRhs := LetRefEvalUnfold(s, rhs, body, outs, v);
+              rhs.EvalSound(s, funs, outRhs);
+              body.EvalSound(s.Update([rhs.Eval(s).value]), funs, outs);
+            }
+          } 
+          if Eval(s).value in outs {
+            assert RefEval(s, outs) by {
+              rhs.EvalSound(s, funs, iset{rhs.Eval(s).value});
+              body.EvalSound(s.Update([rhs.Eval(s).value]), funs, outs);
+            }
+          }
+        }
+      case QuantifierExpr(true, v, typ, body) => 
+        if Eval(s).Some? {
+          if RefEval(s, outs) {
+            assert Eval(s).value in outs by {
+              if (forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+                body.RefEval(s.Update(Singleton(x)), iset{M.True})) {
+                forall x: M.Any | 
+                  && M.HasType(x, typ.ToType())
+                  && body.RefEval(s.Update(Singleton(x)), iset{M.False})
+                  ensures false 
+                {
+                  M.TrueNotFalse();
+                }
+              } else {
+                assert M.False in outs;
+              }
+            }
+          } 
+          if Eval(s).value in outs {
+            assert RefEval(s, outs) by {
+              if (forall x: M.Any | M.HasType(x, typ.ToType()) :: 
+                body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
+                forall x: M.Any | M.HasType(x, typ.ToType()) {
+                  body.EvalSound(s.Update(Singleton(x)), funs, iset{M.True});
+                }
+              } else {
+                var x: M.Any :| M.HasType(x, typ.ToType()) &&
+                  body.Eval(s.Update(Singleton(x))) != Some(M.True);
+                M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
+              }
+            }
+          }
+        }
+      case QuantifierExpr(false, v, typ, body) => 
+        if Eval(s).Some? {
+          if RefEval(s, outs) {
+            assert Eval(s).value in outs by {
+              if (exists x: M.Any | M.HasType(x, typ.ToType()) :: 
+                body.RefEval(s.Update(Singleton(x)), iset{M.True})) {
+                var x: M.Any :| M.HasType(x, typ.ToType()) &&
+                  body.RefEval(s.Update(Singleton(x)), iset{M.True});
+                if body.RefEval(s.Update(Singleton(x)), iset{M.False}) {
+                  M.TrueNotFalse();
+                }
+              }
+            }
+          }
+          if Eval(s).value in outs {
+            assert RefEval(s, outs) by {
+              if !(exists x: M.Any | M.HasType(x, typ.ToType()) :: 
+                body.Eval(s.Update(Singleton(x))) == Some(M.True)) {
+                forall x: M.Any | M.HasType(x, typ.ToType()) 
+                  ensures body.RefEval(s.Update(Singleton(x)), iset{M.False}) {
+                  body.EvalSound(s.Update(Singleton(x)), funs, iset{M.False});
+                  M.BoolIsTrueOrFalse(body.Eval(s.Update(Singleton(x))).value);
+                }
+              }
+            }
+          }
+        }
+      case _ => 
     }
-
-    // ghost predicate LetRefEval(outsRhs: iset<M.Any>, rhs: Expr, body: Expr, s: State, outs: iset<M.Any>) 
-    //   reads *
-    // {
-    //   && rhs.RefEval(s, outsRhs)
-    //   && forall out <- outsRhs :: body.RefEval(s.Update([out]), outs)
-    // }
-
-    // lemma RefEvalEmpty(s: State)
-    //   requires RefEval(s, iset{})
-    //   ensures false
-    // {
-    //   match this
-    //   case OperatorExpr(op, args) =>
-    //     var outArgsSet :| 
-    //       && RefSeqEval(args, s, outArgsSet)
-    //       && (forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, iset{}));
-    //     SeqRefEvalEmpty(args, s, outArgsSet);
-    //   case FunctionCallExpr(func, args) =>
-    //     var outArgsSet :| 
-    //       && RefSeqEval(args, s, outArgsSet)
-    //       && (forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, iset{}));
-    //     SeqRefEvalEmpty(args, s, outArgsSet);
-    //   case LetExpr(v, rhs, body) =>
-    //     var outsRhs :| LetRefEval(outsRhs, rhs, body, s, iset{}) by {
-    //       assert forall outsRhs: iset<M.Any> :: 
-    //         LetRefEval(outsRhs, rhs, body, s, iset{}) == (rhs.RefEval(s, outsRhs) && 
-    //           forall out <- outsRhs :: body.RefEval(s.Update([out]), iset{}));
-    //     }
-    //     assert LetRefEval(outsRhs, rhs, body, s, iset{}) == (rhs.RefEval(s, outsRhs) && 
-    //       forall out <- outsRhs :: body.RefEval(s.Update([out]), iset{}));
-    //     if outsRhs == iset{} {
-    //       rhs.RefEvalEmpty(s);
-    //     } else {
-    //       var x :| x in outsRhs;
-    //       body.RefEvalEmpty(s.Update([x]));
-    //     }
-    //   case QuantifierExpr(true, v, tp, body) =>
-    //   case QuantifierExpr(false, v, tp, body) =>
-    //   case _ =>
-    // }
-
-    // lemma RefEvalInter(s: State, funs: set<Function>, outs1: iset<M.Any>, outs2: iset<M.Any>)
-    //   requires FunctionsCalled() <= funs
-    //   requires forall func <- funs :: func.Valid()
-    //   requires forall func <- funs :: func.IsSound()
-    //   requires forall func <- funs :: func.FunctionsCalled() <= funs
-    //   requires RefEval(s, outs1)
-    //   requires RefEval(s, outs2)
-    //   ensures RefEval(s, outs1 * outs2)
-    // {
-    //   match this
-    //   case OperatorExpr(op, args) =>
-    //     var outArgsSet1: seq<iset<M.Any>> :| 
-    //       && RefSeqEval(args, s, outArgsSet1)
-    //       && (forall outArgs <- CrossProduct(outArgsSet1) :: op.RefEval(outArgs, outs1));
-    //     var outArgsSet2: seq<iset<M.Any>> :| 
-    //       && RefSeqEval(args, s, outArgsSet2)
-    //       && (forall outArgs <- CrossProduct(outArgsSet2) :: op.RefEval(outArgs, outs2));
-    //     SeqRefEvalInter(args, s, funs, outArgsSet1, outArgsSet2);
-    //     CrossProductInter(outArgsSet1, outArgsSet2);
-    //   case FunctionCallExpr(func, args) =>
-    //     var outArgsSet1: seq<iset<M.Any>> :| 
-    //       && RefSeqEval(args, s, outArgsSet1)
-    //       && (forall outArgs <- CrossProduct(outArgsSet1) :: func.RefEval(outArgs, outs1));
-    //     var outArgsSet2: seq<iset<M.Any>> :| 
-    //       && RefSeqEval(args, s, outArgsSet2)
-    //       && (forall outArgs <- CrossProduct(outArgsSet2) :: func.RefEval(outArgs, outs2));
-    //     SeqRefEvalInter(args, s, funs, outArgsSet1, outArgsSet2);
-    //     CrossProductInter(outArgsSet1, outArgsSet2);
-    //   case LetExpr(v, rhs, body) =>
-    //     var outsRhs1: iset<M.Any> :| LetRefEval(outsRhs1, rhs, body, s, outs1) by {
-    //       assert forall outsRhs1: iset<M.Any> :: 
-    //         LetRefEval(outsRhs1, rhs, body, s, outs1) == (rhs.RefEval(s, outsRhs1) 
-    //         && forall out <- outsRhs1 :: body.RefEval(s.Update([out]), outs1));
-    //     }
-    //     var outsRhs2: iset<M.Any> :| LetRefEval(outsRhs2, rhs, body, s, outs2) by {
-    //       assert forall outsRhs2: iset<M.Any> :: 
-    //          LetRefEval(outsRhs2, rhs, body, s, outs2) == (rhs.RefEval(s, outsRhs2) && 
-    //            forall out <- outsRhs2 :: body.RefEval(s.Update([out]), outs2));
-    //     }
-    //     assert LetRefEval(outsRhs2, rhs, body, s, outs2) == (rhs.RefEval(s, outsRhs2) && 
-    //       forall out <- outsRhs2 :: body.RefEval(s.Update([out]), outs2));
-    //     assert LetRefEval(outsRhs1, rhs, body, s, outs1) == (rhs.RefEval(s, outsRhs1) 
-    //       && forall out <- outsRhs1 :: body.RefEval(s.Update([out]), outs1));
-    //     rhs.RefEvalInter(s, funs, outsRhs1, outsRhs2);
-    //   case QuantifierExpr(true, v, typ, body) => 
-    //     if (forall x: M.Any | M.HasType(x, tp.ToType()) :: 
-    //         body.RefEval(s.Update([x]), iset{M.True})) {
-    //       forall x: M.Any | 
-    //         && M.HasType(x, tp.ToType())
-    //         && body.RefEval(s.Update([x]), iset{M.False})
-    //         ensures false 
-    //       {
-    //         body.RefEvalInter(s.Update([x]), funs, iset{M.True}, iset{M.False});
-    //         body.RefEvalEmpty(s.Update([x])) by {
-    //           assert iset{M.True} * iset{M.False} == iset{} by {
-    //             M.TrueNotFalse();
-    //           }
-    //         }
-    //       }
-    //     }
-    //   case QuantifierExpr(false, v, tp, body) => 
-    //     if (exists x: M.Any | M.HasType(x, tp.ToType()) :: 
-    //       body.RefEval(s.Update([x]), iset{M.True})) {
-    //       var x :| M.HasType(x, tp.ToType()) &&
-    //         body.RefEval(s.Update([x]), iset{M.True});
-    //       if body.RefEval(s.Update([x]), iset{M.False}) {
-    //         assert false by {
-    //           body.RefEvalInter(s.Update([x]), funs, iset{M.True}, iset{M.False});
-    //           body.RefEvalEmpty(s.Update([x])) by {
-    //             assert iset{M.True} * iset{M.False} == iset{} by {
-    //               M.TrueNotFalse();
-    //             }
-    //           }
-    //         }
-    //       }
-    //     } 
-    //   case _ =>
-    // }
 
     ghost predicate HoldsOn(s: State) 
       requires IsDefinedOn(|s|)
@@ -519,10 +529,9 @@ module Expr {
       requires forall func <- funs :: func.FunctionsCalled() <= funs
       requires IsDefinedOn(|s|)
       requires ValidCalls()
-      requires HoldsOn(s)
-      ensures RefHoldsOn(s)
+      ensures HoldsOn(s) == RefHoldsOn(s)
     {
-      EvalSound(s, funs);
+      EvalSound(s, funs, iset{M.True});
     }
 
     lemma EvalDepthLemma(s1: State, s2: State) 
@@ -596,51 +605,36 @@ module Expr {
     Some([e] + es)
   }
 
-  lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>)
+  predicate ISetOptionEq<T(!new)>(x: Option<T>, y: iset<T>)
+  {
+    if x.None? then false else x.value in y
+  }
+
+  ghost predicate SeqISetOptionEq<T(!new)>(x: Option<seq<T>>, y: seq<iset<T>>)
+  {
+    if x.None? then false else
+    x.value in CrossProduct(y) 
+  }
+
+  lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>, outs: seq<iset<M.Any>>)
     requires forall e <- ss :: e.IsDefinedOn(|s|)
-    requires SeqEval(ss, s).Some?
     requires forall func <- funs :: func.Valid()
     requires forall func <- funs :: func.IsSound()
     requires forall func <- funs :: func.FunctionsCalled() <= funs
     requires SeqFunctionsCalled(ss) <= funs
-    ensures RefSeqEval(ss, s, SeqSingleton(SeqEval(ss, s).value))  
+    ensures RefSeqEval(ss, s, outs) <==> SeqISetOptionEq(SeqEval(ss, s), outs)   
   {
     if ss != [] {
-      ss[0].EvalSound(s, funs);
-      SeqEvalSound(ss[1..], s, funs);
-      SeqSingletonCons(ss[0].Eval(s).value, SeqEval(ss[1..], s).value);
+      if RefSeqEval(ss, s, outs) {
+        ss[0].EvalSound(s, funs, outs[0]);
+        SeqEvalSound(ss[1..], s, funs, outs[1..]);
+      }
+      if SeqISetOptionEq(SeqEval(ss, s), outs) {
+        ss[0].EvalSound(s, funs, outs[0]);
+        SeqEvalSound(ss[1..], s, funs, outs[1..]);
+      }
     }
   }
-
-  // function SeqInter(ss1: seq<iset>, ss2: seq<iset>): seq<iset> 
-  //   requires |ss1| == |ss2|
-  // {
-  //   seq(|ss1|, (i: nat) requires i < |ss1| => ss1[i] * ss2[i])
-  // }
-
-  // lemma CrossProductInter<T(!new)>(ss1: seq<iset<T>>, ss2: seq<iset<T>>)
-  //   requires |ss1| == |ss2|
-  //   ensures CrossProduct(ss1) * CrossProduct(ss2) == CrossProduct(SeqInter(ss1, ss2))
-  // {  }
-
-  // lemma SeqRefEvalEmpty(ss: seq<Expr>, s: State, outSeqs: seq<iset<M.Any>>)
-  //   requires RefSeqEval(ss, s, outSeqs)
-  //   ensures CrossProduct(outSeqs) != iset{}
-  // {
-
-  // }
-
-  // lemma SeqRefEvalInter(ss: seq<Expr>, s: State, funs: set<Function>, outSeqs1: seq<iset<M.Any>>, outSeqs2: seq<iset<M.Any>>)
-  //   requires forall func <- funs :: func.Valid()
-  //   requires forall func <- funs :: func.IsSound()
-  //   requires forall func <- funs :: func.FunctionsCalled() <= funs
-  //   requires RefSeqEval(ss, s, outSeqs1)
-  //   requires RefSeqEval(ss, s, outSeqs2)
-  //   ensures |ss| == |outSeqs1| == |outSeqs2|
-  //   ensures RefSeqEval(ss, s, SeqInter(outSeqs1, outSeqs2))
-  // {
-
-  // }
 
   lemma SeqEval1(e: Expr, s: State)
     requires e.IsDefinedOn(|s|)
