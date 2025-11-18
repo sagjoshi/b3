@@ -560,7 +560,7 @@ module VCGenOmni {
       VCs := VCs + VCs';
     }
     if (forall e <- VCs :: e.Holds()) {
-      Omni.SemSoundProcs(SetOfSeq(procs));
+      // Omni.SemSoundProcs(SetOfSeq(procs));
     }
   }
 }

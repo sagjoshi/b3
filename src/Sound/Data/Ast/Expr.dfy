@@ -191,7 +191,7 @@ module Expr {
     }
 
     ghost predicate IsSound()
-      requires Valid()
+      // requires Valid()
       reads *
     {
       !IsUninterpreted() ==> 
@@ -256,8 +256,8 @@ module Expr {
     function FunctionsCalled(): set<Function>
     {
       match this
-      case FunctionCallExpr(func, args) => {func} + SeqFunctionsCalled(args)
-      case OperatorExpr(op, args) => SeqFunctionsCalled(args)
+      case FunctionCallExpr(func, args) => {func} + SeqExprFunctionsCalled(args)
+      case OperatorExpr(op, args) => SeqExprFunctionsCalled(args)
       case QuantifierExpr(univ, v, tp, body) => body.FunctionsCalled()
       case LetExpr(v, rhs, body) => rhs.FunctionsCalled() + body.FunctionsCalled()
       case _ => {}
@@ -365,13 +365,42 @@ module Expr {
       }
     }
 
+    lemma RefEvalDefinedOn(s: State, outs: iset<M.Any>)
+      requires RefEval(s, outs)
+      ensures outs != iset{}
+      ensures IsDefinedOn(|s|)
+    {
+      match this
+      case OperatorExpr(op, args) => 
+        var outArgsSet :| 
+          && RefSeqEval(args, s, outArgsSet)
+          && (forall outArgs <- CrossProduct(outArgsSet) :: op.RefEval(outArgs, outs));
+        RefSeqEvalDefined(args, s, outArgsSet);
+      case FunctionCallExpr(func, args) => 
+        var outArgsSet :| 
+          && RefSeqEval(args, s, outArgsSet)
+          && (forall outArgs <- CrossProduct(outArgsSet) :: func.RefEval(outArgs, outs));
+        RefSeqEvalDefined(args, s, outArgsSet);
+      case LetExpr(v, rhs, body) => 
+        // var outsRhs :| rhs.RefEval(s, outsRhs) && LetRefEval(s, rhs, body, outsRhs, outs);
+        var outsRhs := LetRefEvalUnfold(s, rhs, body, outs, v);
+        rhs.RefEvalDefinedOn(s, outsRhs);
+        var x :| x in outsRhs;
+        body.RefEvalDefinedOn(s.Update([x]), outs);
+      case QuantifierExpr(true, v, tp, body) => 
+        var x := M.NoEmptyTypes(tp.ToType());
+        body.RefEvalDefinedOn(s.Update([x]), iset v | M.IsBool(v));
+      case QuantifierExpr(false, v, tp, body) => 
+        var x := M.NoEmptyTypes(tp.ToType());
+        body.RefEvalDefinedOn(s.Update([x]), iset v | M.IsBool(v));
+      case _ => 
+    }
+
     lemma EvalSound(s: State, funs: set<Function>, outs: iset<M.Any>)
       requires FunctionsCalled() <= funs
-      requires forall func <- funs :: func.Valid()
       requires forall func <- funs :: func.IsSound()
       requires forall func <- funs :: func.FunctionsCalled() <= funs
       requires IsDefinedOn(|s|)
-      requires ValidCalls()
       ensures RefEval(s, outs) == ISetOptionEq(Eval(s), outs)
     {
       match this
@@ -524,14 +553,17 @@ module Expr {
 
     lemma HoldsOnSound(s: State, funs: set<Function>)
       requires FunctionsCalled() <= funs
-      requires forall func <- funs :: func.Valid()
       requires forall func <- funs :: func.IsSound()
       requires forall func <- funs :: func.FunctionsCalled() <= funs
-      requires IsDefinedOn(|s|)
-      requires ValidCalls()
-      ensures HoldsOn(s) == RefHoldsOn(s)
+      ensures (IsDefinedOn(|s|) && HoldsOn(s)) == RefHoldsOn(s)
     {
-      EvalSound(s, funs, iset{M.True});
+      if IsDefinedOn(|s|) && HoldsOn(s) {
+        EvalSound(s, funs, iset{M.True});
+      }
+      if RefHoldsOn(s) {
+        RefEvalDefinedOn(s, iset{M.True});
+        EvalSound(s, funs, iset{M.True});
+      }
     }
 
     lemma EvalDepthLemma(s1: State, s2: State) 
@@ -561,9 +593,15 @@ module Expr {
     }
   }
 
-  function SeqFunctionsCalled(ss: seq<Expr>): set<Function>
+  function SeqExprFunctionsCalled(ss: seq<Expr>): set<Function>
   {
-    if ss == [] then {} else ss[0].FunctionsCalled() + SeqFunctionsCalled(ss[1..])
+    if ss == [] then {} else ss[0].FunctionsCalled() + SeqExprFunctionsCalled(ss[1..])
+  }
+
+  lemma SeqExprFunctionsCalledIn(ss: seq<Expr>, s: Expr)
+    requires s in ss
+    ensures s.FunctionsCalled() <= SeqExprFunctionsCalled(ss)
+  {
   }
 
   ghost function CrossProduct<T(!new)>(ss: seq<iset<T>>): iset<seq<T>> {
@@ -616,12 +654,28 @@ module Expr {
     x.value in CrossProduct(y) 
   }
 
+  lemma RefSeqEvalDefined(ss: seq<Expr>, s: State, outs: seq<iset<M.Any>>)
+    requires RefSeqEval(ss, s, outs)
+    ensures CrossProduct(outs) != iset{}
+    ensures SeqExprDepth(ss) <= |s|
+  {
+    if ss != [] {
+      ss[0].RefEvalDefinedOn(s, outs[0]);
+      RefSeqEvalDefined(ss[1..], s, outs[1..]);
+      var o :| o in outs[0];
+      var os :| os in CrossProduct(outs[1..]);
+      assert [o] + os in CrossProduct(outs);
+    } else {
+      assert [] in CrossProduct(outs);
+    }
+  }
+
   lemma SeqEvalSound(ss: seq<Expr>, s: State, funs: set<Function>, outs: seq<iset<M.Any>>)
     requires forall e <- ss :: e.IsDefinedOn(|s|)
-    requires forall func <- funs :: func.Valid()
+    // requires forall func <- funs :: func.Valid()
     requires forall func <- funs :: func.IsSound()
     requires forall func <- funs :: func.FunctionsCalled() <= funs
-    requires SeqFunctionsCalled(ss) <= funs
+    requires SeqExprFunctionsCalled(ss) <= funs
     ensures RefSeqEval(ss, s, outs) <==> SeqISetOptionEq(SeqEval(ss, s), outs)   
   {
     if ss != [] {

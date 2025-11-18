@@ -31,6 +31,16 @@ module State {
       vals + this
     }
 
+    function Size(): Idx {
+      |this|
+    }
+
+    function UpdateAt(i: Idx, val: Any): State
+      requires i < |this|
+    {
+      this[i := val]
+    }
+
     function UpdateMapShift(i: Idx, vals: map<Idx, Any>): State  
       ensures |UpdateMapShift(i, vals)| > i
       ensures |UpdateMapShift(i, vals)| >= |this|

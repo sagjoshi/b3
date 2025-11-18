@@ -1,7 +1,7 @@
 module AST {
   import opened Std.Wrappers
   import opened Utils
-  import opened M = Model
+  import M = Model
   import opened State
   import opened Expr
 
@@ -101,6 +101,19 @@ module AST {
       case _ => {}
     }
 
+    function FunctionsCalled(): set<Function> {
+      match this
+      case Seq(ss) => SeqFunctionsCalled(ss)
+      case Choice(s0, s1) => s0.FunctionsCalled() + s1.FunctionsCalled()
+      case NewScope(_, s) => s.FunctionsCalled()
+      case Loop(_, body) => body.FunctionsCalled()
+      case Check(e) => e.FunctionsCalled()
+      case Assume(e) => e.FunctionsCalled()
+      case Assign(_, rhs) => rhs.FunctionsCalled()
+      case Call(proc, args) => SeqExprFunctionsCalled(proc.Pre) + SeqExprFunctionsCalled(proc.Post)
+      case Escape(l) => {}
+    }
+
     predicate ImmutableVarsIdx(vars: set<Idx>, i: Idx) {
       match this
       case Assign(x, _) => x + i !in vars
@@ -130,6 +143,10 @@ module AST {
 
   function SeqProceduresCalled(ss: seq<Stmt>): set<Procedure> {
     if ss == [] then {} else ss[0].ProceduresCalled() + SeqProceduresCalled(ss[1..])
+  }
+
+  function SeqFunctionsCalled(ss: seq<Stmt>): set<Function> {
+    if ss == [] then {} else ss[0].FunctionsCalled() + SeqFunctionsCalled(ss[1..])
   }
 
   lemma SeqProceduresCalledLemma(ss: seq<Stmt>, s: Stmt, proc: Procedure)
@@ -416,12 +433,11 @@ module AST {
       if Body.Some? then Body.value.ProceduresCalled() else {}
     }
 
-    function ProceduresCalledAndSelf(): set<Procedure> 
+    function FunctionsCalled(): set<Function> 
       reads this`Body
     {
-      if Body.Some? then Body.value.ProceduresCalled() + {this} else {this}
+      if Body.Some? then Body.value.FunctionsCalled() else {}
     }
-
   }
 
   function SeqSize(ss: seq<Stmt>): nat {
