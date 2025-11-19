@@ -197,10 +197,10 @@ module Omni {
       e.RefHoldsOn(st, m) &&  st in posts.head
     case Assume(e)      =>  
       e.RefHoldsOn(st, m) ==> st in posts.head
-    case Assign(x, v)   => 
+    case Assign(x, e)   => 
       && x < st.Size()
-      && (v.RefEval(st, (iset v | true), m) ==>
-        v.RefEval(st, (iset v {:trigger} | st.UpdateAt(x, v) in posts.head), m))
+      && forall v: M.Any
+        | e.RefEval(st, iset{v}, m) :: st.UpdateAt(x, v) in posts.head
     case Call(proc, args) => 
       && RefProcedureIsSound(proc, m)
       && args.IsDefinedOn(|st|)
@@ -455,13 +455,9 @@ module Omni {
         ProcedureIsSoundSound(proc, procs, funs, m);
       case Assume(e) => e.HoldsOnSound(st, funs, m);
       case Check(e) => e.HoldsOnSound(st, funs, m);
-      case Assign(x, v) =>
-        assert (v.RefEval(st, (iset v {:trigger} | true), m) ==>
-        v.RefEval(st, (iset v {:trigger} | st.UpdateAt(x, v) in posts.head), m)) by {
-          if v.RefEval(st, (iset v {:trigger} | true), m) {
-            v.EvalComplete(st, (iset v {:trigger} | true), m);
-            v.EvalSound(st, funs, (iset v {:trigger} | st.UpdateAt(x, v) in posts.head), m);
-          }
+      case Assign(x, e) =>
+        forall v: M.Any | e.RefEval(st, iset{v}, m) {
+          e.EvalComplete(st, iset{v}, m);
         }
       case _ =>
   }
