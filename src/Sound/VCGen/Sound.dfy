@@ -7,67 +7,67 @@ module VCGenOmni {
   import opened Expr
   import Block
   import Omni
-  import AssignmentTarget'
+  import AssignmentTarget
 
-  method VCGen(s: Stmt, context_in: Context) returns (context: Context, VCs: seq<Expr>) 
+  method VCGen(s: Stmt, context_in: Context, ghost md: M.Model) returns (context: Context, VCs: seq<Expr>) 
     requires s.ValidCalls()
     requires s.IsDefinedOn(|context_in.incarnation|)
     requires s.Single()
     ensures |context_in.incarnation| <= |context.incarnation|
-    ensures (forall e <- VCs :: e.Holds()) ==> 
+    ensures (forall e <- VCs :: e.Holds(md)) ==> 
       forall st: State :: 
-        context_in.IsSatisfiedOn(st) ==>
-        Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels())
+        context_in.IsSatisfiedOn(st, md) ==>
+        Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels(md), md)
   {
     context := context_in;
     match s
     case Check(e) =>
       VCs := [context_in.MkEntailment(e)];
-      if (forall e <- VCs :: e.Holds()) {
+      if (forall e <- VCs :: e.Holds(md)) {
         // assert context.MkEntailment(e).Holds();
-        forall st: State | context.IsSatisfiedOn(st) 
-          ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels()) {
-          context.MkEntailmentLemma(e, st);
+        forall st: State | context.IsSatisfiedOn(st, md) 
+          ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels(md), md) {
+          context.MkEntailmentLemma(e, st, md);
         }
       }
     case Assume(e) =>
       context := context_in.Add(e);
       VCs := [];
-      forall st: State | context_in.IsSatisfiedOn(st) 
-        ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels()) {
-        if e.HoldsOn(context.AdjustState(st)) {
+      forall st: State | context_in.IsSatisfiedOn(st, md) 
+        ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels(md), md) {
+        if e.HoldsOn(context.AdjustState(st), md) {
           context_in.SubstituteIsDefinedOnLemma(e, |st|);
-          context_in.AdjustStateSubstituteLemma(st, e);
+          context_in.AdjustStateSubstituteLemma(st, e, md);
         }
       }
     case Assign(v, x) =>
       ghost var vNew;
       vNew, context := context_in.AddEq(v, x);
       VCs := [];
-      forall st: State | context_in.IsSatisfiedOn(st)
-        ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels()) {
+      forall st: State | context_in.IsSatisfiedOn(st, md)
+        ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels(md), md) {
         context_in.SubstituteIsDefinedOnLemma(x, |st|);
-        var v' := context_in.Substitute(x).Eval(st);
-        assert x.Eval(context_in.AdjustState(st)) == v' by {
-          context_in.AdjustStateSubstituteEvalLemma(st, x);
+        var v' := context_in.Substitute(x).Eval(st, md);
+        assert x.Eval(context_in.AdjustState(st), md) == v' by {
+          context_in.AdjustStateSubstituteEvalLemma(st, x, md);
         }
         if v'.Some? {
           var st' := st.UpdateOrAdd(vNew, v'.value);
           var stTransformed := context_in.AdjustState(st)[v := v'.value];
 
           assert stTransformed == context.AdjustState(st') by {
-            context_in.AdjustStateSubstituteLemma(st, x);
+            context_in.AdjustStateSubstituteLemma(st, x, md);
           }
 
-          assert context.IsSatisfiedOn(st') by {
+          assert context.IsSatisfiedOn(st', md) by {
             context_in.SubstituteIsDefinedOnLemma(x, vNew);
-            context_in.Substitute(x).EvalDepthLemma(st, st');
-            EvalEqLemma(BVar(vNew), context_in.Substitute(x), st');
+            context_in.Substitute(x).EvalDepthLemma(st, st', md);
+            EvalEqLemma(BVar(vNew), context_in.Substitute(x), st', md);
 
-            assert forall e <- context_in.ctx :: e.HoldsOn(st) ==> e.HoldsOn(st') by 
+            assert forall e <- context_in.ctx :: e.HoldsOn(st, md) ==> e.HoldsOn(st', md) by 
             {
-              forall e: Expr | e in context_in.ctx && e.HoldsOn(st) ensures e.HoldsOn(st') {
-                e.EvalDepthLemma(st, st');
+              forall e: Expr | e in context_in.ctx && e.HoldsOn(st, md) ensures e.HoldsOn(st', md) {
+                e.EvalDepthLemma(st, st', md);
               }
             }
           }
@@ -84,33 +84,33 @@ module VCGenOmni {
       var contextPost := context'.mkPostContext(proc, args, context_in);
       context := Context(contextPost.AddSeq(proc.Post).ctx, context'.incarnation);
 
-      if (forall e <- VCs :: e.Holds()) {
-        forall st: State | context_in.IsSatisfiedOn(st)
-          ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels()) {
+      if (forall e <- VCs :: e.Holds(md)) {
+        forall st: State | context_in.IsSatisfiedOn(st, md)
+          ensures Omni.SemSingle(s, context_in.AdjustState(st), context.AdjustedModels(md), md) {
           var stAdj := context_in.AdjustState(st);
           var callSt := args.Eval(stAdj);
           assert args.IsDefinedOn(|stAdj|);
           forall e <- proc.Pre  
             ensures e.IsDefinedOn(|callSt|) 
-            ensures e.HoldsOn(callSt) 
+            ensures e.HoldsOn(callSt, md) 
           {
             calc {
-              e.HoldsOn(callSt);
+              e.HoldsOn(callSt, md);
               { context_in.mkPreContextLemma(proc, args, st); }
-              e.HoldsOn(contextPre.AdjustState(st));
-              { contextPre.MkEntailmentLemma(e, st); }
-              contextPre.MkEntailment(e).Holds();
+              e.HoldsOn(contextPre.AdjustState(st), md);
+              { contextPre.MkEntailmentLemma(e, st, md); }
+              contextPre.MkEntailment(e).Holds(md);
               { contextPre.MkEntailmentSeqLemma(proc.Pre, e);
                 assert contextPre.MkEntailment(e) in VCs;
-                assert forall e <- VCs :: e.Holds(); }
+                assert forall e <- VCs :: e.Holds(md  ); }
               true;
             }
           }
           forall st': State | 
             && st' in stAdj.EqExcept(args.OutArgs()) 
             && var callSt' := args.Eval(st') + args.EvalOld(stAdj);
-               forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt')
-            ensures st' in context.AdjustedModels() 
+               forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt', md)
+            ensures st' in context.AdjustedModels(md) 
             {
               forall v <- args.OutArgs() 
                 ensures v < |context_in.AdjustState(st)| {
@@ -121,13 +121,13 @@ module VCGenOmni {
                 assert (map i: Idx | i in args.OutArgs() :: st'[i]).Keys == args.OutArgs();
               }
               var callSt' := args.Eval(st') + args.EvalOld(stAdj);
-              assert context.IsSatisfiedOn(st'') by {
+              assert context.IsSatisfiedOn(st'', md) by {
                 assert forall i <- context.incarnation :: i < |st''|;
                 forall e <- context.ctx
                   ensures e.IsDefinedOn(|st''|)
-                  ensures e.HoldsOn(st'') {
+                  ensures e.HoldsOn(st'', md) {
                   if e in context_in.ctx {
-                    e.EvalDepthLemma(st, st'');
+                    e.EvalDepthLemma(st, st'', md);
                   } else {
                     assert e in contextPost.SeqSubstitute(proc.Post);
                     var e' := contextPost.GetSeqSubstituteLemma(proc.Post, e);
@@ -137,9 +137,9 @@ module VCGenOmni {
                     }
                     contextPost.SubstituteIsDefinedOnLemma(e', |st''|);
                     calc {
-                      contextPost.Substitute(e').HoldsOn(st'');
-                      { contextPost.AdjustStateSubstituteLemma(st'', e'); }
-                      e'.HoldsOn(contextPost.AdjustState(st''));
+                      contextPost.Substitute(e').HoldsOn(st'', md);
+                      { contextPost.AdjustStateSubstituteLemma(st'', e', md); }
+                      e'.HoldsOn(contextPost.AdjustState(st''), md);
                       { 
                         assert contextPost.AdjustState(st'') == callSt' by {
                           assert |contextPost.AdjustState(st'')| == |callSt'| == |args| + args.NumInOutArgs();
@@ -184,69 +184,69 @@ module VCGenOmni {
       }
   }
 
-  ghost function BlockWPSeq(bcont: Block.Continuation, post: iset<State>) : Omni.Continuation
-    ensures |BlockWPSeq(bcont, post)| == |bcont| + 1
+  ghost function BlockWPSeq(bcont: Block.Continuation, post: iset<State>, md: M.Model) : Omni.Continuation
+    ensures |BlockWPSeq(bcont, post, md)| == |bcont| + 1
     // reads *
   {
     if bcont == [] then
       [post]
     else 
-      var wpSeq := BlockWPSeq(bcont[1..], post); // [AllStates]
-      var wpNew := Omni.SeqWP(bcont[0].cont, wpSeq); // Omni.SeqWP(Checks, [AllStates])
+      var wpSeq := BlockWPSeq(bcont[1..], post, md); // [AllStates]
+      var wpNew := Omni.SeqWP(bcont[0].cont, wpSeq, md); // Omni.SeqWP(Checks, [AllStates])
       var wpSeq := wpSeq.UpdateHead(wpNew); // [Omni.SeqWP(Checks, [AllStates])]
       wpSeq.UpdateAndAdd(bcont[0].varsInScope) 
   }
 
-  lemma BlockWPSeqIdx(bcont: Block.Continuation, l: nat)
+  lemma BlockWPSeqIdx(bcont: Block.Continuation, l: nat, md: M.Model)
     requires l < |bcont|
-    ensures BlockWPSeq(bcont, AllStates)[l + 1] == UpdateSet(bcont.VarsInScope(l), BlockWPSeq(bcont[l..], AllStates)[0])
+    ensures BlockWPSeq(bcont, AllStates, md)[l + 1] == UpdateSet(bcont.VarsInScope(l), BlockWPSeq(bcont[l..], AllStates, md)[0])
   {
     if l != 0 {
       if |bcont| != 0 {
-        var blockWP := BlockWPSeq(bcont[1..], AllStates);
+        var blockWP := BlockWPSeq(bcont[1..], AllStates, md);
         calc {
-          BlockWPSeq(bcont, AllStates)[l + 1];
+          BlockWPSeq(bcont, AllStates, md)[l + 1];
         ==
-          blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP)).UpdateAndAdd(bcont[0].varsInScope)[l + 1];
+          blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP, md)).UpdateAndAdd(bcont[0].varsInScope)[l + 1];
         ==
-          blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP)).Update(bcont[0].varsInScope)[l];
+          blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP, md)).Update(bcont[0].varsInScope)[l];
         == 
-          UpdateSet(bcont[0].varsInScope, blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP))[l]);
-        == { assert blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP))[l] == blockWP[l]; }
+          UpdateSet(bcont[0].varsInScope, blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP, md))[l]);
+        == { assert blockWP.UpdateHead(Omni.SeqWP(bcont[0].cont, blockWP, md))[l] == blockWP[l]; }
           UpdateSet(bcont[0].varsInScope, blockWP[l]);
         == 
-          { assert blockWP[l] == UpdateSet(bcont[1..].VarsInScope(l - 1), BlockWPSeq(bcont[l..], AllStates)[0]) by {
+          { assert blockWP[l] == UpdateSet(bcont[1..].VarsInScope(l - 1), BlockWPSeq(bcont[l..], AllStates, md)[0]) by {
               assert bcont[1..][l - 1..] == bcont[l..];
-              BlockWPSeqIdx(bcont[1..], l - 1); 
+              BlockWPSeqIdx(bcont[1..], l - 1, md); 
           } }
-          UpdateSet(bcont[0].varsInScope, UpdateSet(bcont[1..].VarsInScope(l - 1), BlockWPSeq(bcont[l..], AllStates)[0]));
+          UpdateSet(bcont[0].varsInScope, UpdateSet(bcont[1..].VarsInScope(l - 1), BlockWPSeq(bcont[l..], AllStates, md)[0]));
         == { assert bcont.VarsInScope(l) == bcont[0].varsInScope + bcont[1..].VarsInScope(l - 1); }
-          UpdateSet(bcont.VarsInScope(l), BlockWPSeq(bcont[l..], AllStates)[0]);
+          UpdateSet(bcont.VarsInScope(l), BlockWPSeq(bcont[l..], AllStates, md)[0]);
           }
         }
     } else {
       calc {
-        UpdateSet(bcont.VarsInScope(0), BlockWPSeq(bcont[0..], AllStates)[0]);
+        UpdateSet(bcont.VarsInScope(0), BlockWPSeq(bcont[0..], AllStates, md)[0]);
       == 
-        BlockWPSeq(bcont, AllStates)[0];
+        BlockWPSeq(bcont, AllStates, md)[0];
       ==
-        BlockWPSeq(bcont, AllStates)[1];
+        BlockWPSeq(bcont, AllStates, md)[1];
       }
     }
   }
 
-  ghost predicate BlockSem(s: seq<Stmt>, bcont: Block.Continuation, st: State, post: iset<State>) 
+  ghost predicate BlockSem(s: seq<Stmt>, bcont: Block.Continuation, st: State, post: iset<State>, md: M.Model) 
     // reads *
   {
-    Omni.SeqSem(s, st, BlockWPSeq(bcont, post))
+    Omni.SeqSem(s, st, BlockWPSeq(bcont, post, md), md)
   }
 
-  lemma BlockLastPost(bcont: Block.Continuation, st: State)  
+  lemma BlockLastPost(bcont: Block.Continuation, st: State, md: M.Model)  
     requires |bcont| > 0
     requires bcont[|bcont| - 1] == Block.Point([], 0) 
-    ensures st in BlockWPSeq(bcont, AllStates)[|bcont|]
+    ensures st in BlockWPSeq(bcont, AllStates, md)[|bcont|]
   {
-    BlockWPSeqIdx(bcont, |bcont| - 1);
+    BlockWPSeqIdx(bcont, |bcont| - 1, md);
   }
 
   lemma IsDefinedLoop(inv: Expr, body: Stmt, n: nat, k: nat)
@@ -266,7 +266,7 @@ module VCGenOmni {
     assert [Assume(BConst(false))][1..] == [];
   }
 
-  method SeqVCGen(s: seq<Stmt>, context: Context, bcont: Block.Continuation) returns (VCs: seq<Expr>) 
+  method SeqVCGen(s: seq<Stmt>, context: Context, bcont: Block.Continuation, ghost md: M.Model) returns (VCs: seq<Expr>) 
     requires SeqValidCalls(s)
     requires bcont.ValidCalls()
     requires bcont.IsDefinedOn(|context.incarnation|)
@@ -280,10 +280,10 @@ module VCGenOmni {
     decreases SeqSize(s) + bcont.Size()
 
     ensures
-      (forall e <- VCs :: e.Holds()) ==> 
+      (forall e <- VCs :: e.Holds(md)) ==> 
         forall st: State:: 
-          context.IsSatisfiedOn(st) ==> 
-          BlockSem(s, bcont, context.AdjustState(st), AllStates)
+          context.IsSatisfiedOn(st, md) ==> 
+          BlockSem(s, bcont, context.AdjustState(st), AllStates, md)
   {
     if s == [] { 
       if bcont == [] {
@@ -293,10 +293,10 @@ module VCGenOmni {
         var varsToDelete := bcont[0].varsInScope;
         var cont := bcont[0].cont;
         var context' := context.Delete(varsToDelete);
-        VCs := SeqVCGen(cont, context', bcont[1..]);
-        if (forall e <- VCs :: e.Holds()) {
-          forall st: State | context.IsSatisfiedOn(st)
-            ensures BlockSem([], bcont, context.AdjustState(st), AllStates) {
+        VCs := SeqVCGen(cont, context', bcont[1..], md);
+        if (forall e <- VCs :: e.Holds(md)) {
+          forall st: State | context.IsSatisfiedOn(st, md)
+            ensures BlockSem([], bcont, context.AdjustState(st), AllStates, md) {
             assert forall i <- context'.incarnation :: i in context.incarnation;
             assert context'.AdjustState(st) == Tail(varsToDelete, context.AdjustState(st));
           }
@@ -309,75 +309,75 @@ module VCGenOmni {
       SeqFunConcatLemmas([stmt], cont);
       if stmt.Single() {
         var VCstmt, VCcont, context';
-        context', VCstmt := VCGen(stmt, context);
-        VCcont := SeqVCGen(cont, context', bcont) by {
+        context', VCstmt := VCGen(stmt, context, md);
+        VCcont := SeqVCGen(cont, context', bcont, md) by {
           bcont.VarsDefinedTransitivity(|context.incarnation|, |context'.incarnation|);
         }
         VCs := VCstmt + VCcont;
-        if (forall e <- VCs :: e.Holds()) {
-          forall st: State | context.IsSatisfiedOn(st) 
-            ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) { }
+        if (forall e <- VCs :: e.Holds(md)) {
+          forall st: State | context.IsSatisfiedOn(st, md) 
+            ensures BlockSem(s, bcont, context.AdjustState(st), AllStates, md) { }
         }
       } else {
         match stmt 
         case Seq(ss) =>
-          VCs := SeqVCGen(ss + cont, context, bcont) by {
+          VCs := SeqVCGen(ss + cont, context, bcont, md) by {
             assert Seq(ss).ValidCalls();
             // decreases
             SeqFunConcatLemmas(ss, cont);
           }
-          if (forall e <- VCs :: e.Holds()) {
-            forall st: State | context.IsSatisfiedOn(st) 
-              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) {
-                Omni.SeqLemma(ss, cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates));
+          if (forall e <- VCs :: e.Holds(md)) {
+            forall st: State | context.IsSatisfiedOn(st, md) 
+              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates, md) {
+                Omni.SeqLemma(ss, cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md);
             }
           }
         case Choice(ss0, ss1) =>
-          var VCs0 := SeqVCGen([ss0] + cont, context, bcont) by {
+          var VCs0 := SeqVCGen([ss0] + cont, context, bcont, md) by {
             assert Choice(ss0, ss1).ValidCalls();
           }
-          var VCs1 := SeqVCGen([ss1] + cont, context, bcont) by {
+          var VCs1 := SeqVCGen([ss1] + cont, context, bcont, md) by {
             assert Choice(ss0, ss1).ValidCalls();
           }
           VCs := VCs0 + VCs1;
-          if (forall e <- VCs :: e.Holds()) {
-            forall st: State | context.IsSatisfiedOn(st) 
-              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) { }
+          if (forall e <- VCs :: e.Holds(md)) {
+            forall st: State | context.IsSatisfiedOn(st, md) 
+              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates, md) { }
           }
         case NewScope(n, body) =>
           var vNew, context' := context.AddVars(n);
-          VCs := SeqVCGen([body], context', bcont.Update(cont, n)) by {
+          VCs := SeqVCGen([body], context', bcont.Update(cont, n), md) by {
             // decreases
             bcont.UpdateSize(cont, n);
             assert SeqSize([body]) == body.Size();
             // ValidCalls
             assert NewScope(n, body).ValidCalls();
           }
-          if (forall e <- VCs :: e.Holds()) {
-            forall st: State | context.IsSatisfiedOn(st) 
-              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates) {
-              var blockWP := BlockWPSeq(bcont, AllStates);
-              var contWP := Omni.SeqWP(cont, blockWP);
+          if (forall e <- VCs :: e.Holds(md)) {
+            forall st: State | context.IsSatisfiedOn(st, md) 
+              ensures BlockSem(s, bcont, context.AdjustState(st), AllStates, md) {
+              var blockWP := BlockWPSeq(bcont, AllStates, md);
+              var contWP := Omni.SeqWP(cont, blockWP, md);
               var updWP := ([contWP] + blockWP.UpdateHead(contWP)).Update(n);
-              assert Omni.Sem(NewScope(n, body), context.AdjustState(st), blockWP.UpdateHead(contWP)) by {
+              assert Omni.Sem(NewScope(n, body), context.AdjustState(st), blockWP.UpdateHead(contWP), md) by {
                 forall vs: State | |vs| == n
-                  ensures Omni.Sem(body, context.AdjustState(st).Update(vs), blockWP.UpdateHead(contWP).UpdateAndAdd(n)) {
+                  ensures Omni.Sem(body, context.AdjustState(st).Update(vs), blockWP.UpdateHead(contWP).UpdateAndAdd(n), md) {
                   var st' := st.MergeAt(vNew, vs);
-                  assert context'.IsSatisfiedOn(st') by {
-                    forall e: Expr | e in context.ctx && e.HoldsOn(st) {
-                      e.EvalDepthLemma(st, st');
+                  assert context'.IsSatisfiedOn(st', md) by {
+                    forall e: Expr | e in context.ctx && e.HoldsOn(st, md) {
+                      e.EvalDepthLemma(st, st', md);
                     }
                   }
                   calc {
-                    Omni.SeqSem([body], context'.AdjustState(st'), updWP);
+                    Omni.SeqSem([body], context'.AdjustState(st'), updWP, md);
                     { assert context.AdjustState(st).Update(vs) == context'.AdjustState(st'); }
-                    Omni.SeqSem([body], context.AdjustState(st).Update(vs), updWP);
-                  ==> { Omni.SeqSemSingle(body, context.AdjustState(st).Update(vs), updWP); }
-                    Omni.Sem(body, context.AdjustState(st).Update(vs), updWP);
+                    Omni.SeqSem([body], context.AdjustState(st).Update(vs), updWP, md);
+                  ==> { Omni.SeqSemSingle(body, context.AdjustState(st).Update(vs), updWP, md); }
+                    Omni.Sem(body, context.AdjustState(st).Update(vs), updWP, md);
                   }
                 }
               }
-              Omni.SemNest(NewScope(n, body), cont, context.AdjustState(st), blockWP);
+              Omni.SemNest(NewScope(n, body), cont, context.AdjustState(st), blockWP, md);
             }
           }
         case Escape(l) =>
@@ -386,7 +386,7 @@ module VCGenOmni {
           var context' := context.Delete(varsToDelete) by {
             bcont'.VarsInScopeLeqAll(l);
           }
-          VCs := SeqVCGen([], context', bcont'[l..]) by {
+          VCs := SeqVCGen([], context', bcont'[l..], md) by {
             // decreases
             bcont'.SizePrefix(l);
             // IsDefinedOn
@@ -402,20 +402,20 @@ module VCGenOmni {
               }
             }
           }
-          if (forall e <- VCs :: e.Holds()) {
-            forall st: State | context.IsSatisfiedOn(st)
-              ensures Omni.SeqSem([Escape(l)] + cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates)) {
-              Omni.SemNest(Escape(l), cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates)) by {
-                var blockWP := BlockWPSeq(bcont, AllStates);
-                var updBlockWP := blockWP.UpdateHead(Omni.SeqWP(cont, blockWP));
+          if (forall e <- VCs :: e.Holds(md)) {
+            forall st: State | context.IsSatisfiedOn(st, md)
+              ensures Omni.SeqSem([Escape(l)] + cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md) {
+              Omni.SemNest(Escape(l), cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md) by {
+                var blockWP := BlockWPSeq(bcont, AllStates, md);
+                var updBlockWP := blockWP.UpdateHead(Omni.SeqWP(cont, blockWP, md));
                 calc {
                   context.AdjustState(st) in updBlockWP[l];
-                  { if l != 0 { BlockWPSeqIdx(bcont, l - 1); } }
-                  context.AdjustState(st) in UpdateSet(bcont'.VarsInScope(l), BlockWPSeq(bcont'[l..], AllStates)[0]);
-                  Tail(bcont'.VarsInScope(l), context.AdjustState(st)) in BlockWPSeq(bcont'[l..], AllStates)[0];
+                  { if l != 0 { BlockWPSeqIdx(bcont, l - 1, md); } }
+                  context.AdjustState(st) in UpdateSet(bcont'.VarsInScope(l), BlockWPSeq(bcont'[l..], AllStates, md)[0]);
+                  Tail(bcont'.VarsInScope(l), context.AdjustState(st)) in BlockWPSeq(bcont'[l..], AllStates, md)[0];
                   { assert context'.AdjustState(st) == Tail(bcont'.VarsInScope(l), context.AdjustState(st)); }
-                  context'.AdjustState(st) in BlockWPSeq(bcont'[l..], AllStates)[0];
-                  { assert context'.IsSatisfiedOn(st) by {
+                  context'.AdjustState(st) in BlockWPSeq(bcont'[l..], AllStates, md)[0];
+                  { assert context'.IsSatisfiedOn(st, md) by {
                     forall i | i in context'.incarnation ensures i < |st| {
                       assert i in context.incarnation;
                   } } }
@@ -426,13 +426,13 @@ module VCGenOmni {
           }
         case Loop(inv, body) =>
           var VCInvIni := context.MkEntailment(inv);
-          var assnvars := AssignmentTarget'.Process(body) by {
+          var assnvars := AssignmentTarget.Process(body) by {
             assert Loop(inv, body).ValidCalls();
           }
 
           var vNew, context' := context.AddVarSet(assnvars);
 
-          var VCInvLoop := SeqVCGen([Assume(inv), body, Check(inv), Assume(BConst(false))], context', bcont) by {
+          var VCInvLoop := SeqVCGen([Assume(inv), body, Check(inv), Assume(BConst(false))], context', bcont, md) by {
             // decreases
             calc {
               SeqSize([Assume(inv), body, Check(inv), Assume(BConst(false))]);
@@ -451,34 +451,34 @@ module VCGenOmni {
             IsDefinedLoop(inv, body, |context'.incarnation|, |bcont|);
           }
           VCs := [VCInvIni] + VCInvLoop;
-          if (forall e <- VCs :: e.Holds()) {
-            forall st: State | context.IsSatisfiedOn(st)
-              ensures Omni.SeqSem([Loop(inv, body)] + cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates)) {
-              var inv' := inv.Sem() * context.AdjustState(st).EqExcept(assnvars);
+          if (forall e <- VCs :: e.Holds(md)) {
+            forall st: State | context.IsSatisfiedOn(st, md)
+              ensures Omni.SeqSem([Loop(inv, body)] + cont, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md) {
+              var inv' := inv.Sem(md) * context.AdjustState(st).EqExcept(assnvars);
               var st' := context.AdjustState(st);
-              Omni.SemLoopWithCont(inv, body, cont, st', BlockWPSeq(bcont, AllStates), inv') by {
-                assert st' in inv.Sem() by {
-                  context.MkEntailmentLemma(inv, st);
+              Omni.SemLoopWithCont(inv, body, cont, st', BlockWPSeq(bcont, AllStates, md), inv', md) by {
+                assert st' in inv.Sem(md) by {
+                  context.MkEntailmentLemma(inv, st, md);
                 }
 
                 forall st': State | st' in inv' 
-                  ensures Omni.Sem(body, st', BlockWPSeq(bcont, AllStates).UpdateHead(inv')) {
+                  ensures Omni.Sem(body, st', BlockWPSeq(bcont, AllStates, md).UpdateHead(inv'), md) {
                   var st'' := st.UpdateMapShift(vNew, map i: Idx | i in assnvars :: st'[i]);
                   assert st' == context'.AdjustState(st'') by {
                     assert (map i: Idx | i in assnvars :: st'[i]).Keys == assnvars;
                   }
-                  assert context'.IsSatisfiedOn(st'') by {
+                  assert context'.IsSatisfiedOn(st'', md) by {
                     forall e <- context'.ctx 
-                      ensures e.HoldsOn(st'') {
-                      e.EvalDepthLemma(st, st'');
+                      ensures e.HoldsOn(st'', md) {
+                      e.EvalDepthLemma(st, st'', md);
                     }
                   }
                   calc {
-                    Omni.Sem(body, st', BlockWPSeq(bcont, AllStates).UpdateHead(inv'));
-                    { AssignmentTarget'.Correct(body, st', context.AdjustState(st), assnvars, BlockWPSeq(bcont, AllStates), inv.Sem()); }
-                    Omni.Sem(body, st', BlockWPSeq(bcont, AllStates).UpdateHead(inv.Sem()));
-                    { Omni.InvSem(inv, body, st', BlockWPSeq(bcont, AllStates), Assume(BConst(false))); }
-                    Omni.SeqSem([Assume(inv), body, Check(inv), Assume(BConst(false))], st', BlockWPSeq(bcont, AllStates));
+                    Omni.Sem(body, st', BlockWPSeq(bcont, AllStates, md).UpdateHead(inv'), md);
+                    { AssignmentTarget.Correct(body, st', context.AdjustState(st), assnvars, BlockWPSeq(bcont, AllStates, md), inv.Sem(md), md); }
+                    Omni.Sem(body, st', BlockWPSeq(bcont, AllStates, md).UpdateHead(inv.Sem(md)), md);
+                    { Omni.InvSem(inv, body, st', BlockWPSeq(bcont, AllStates, md), Assume(BConst(false)), md); }
+                    Omni.SeqSem([Assume(inv), body, Check(inv), Assume(BConst(false))], st', BlockWPSeq(bcont, AllStates, md), md);
                     true;
                   }
                 }
@@ -489,34 +489,34 @@ module VCGenOmni {
     }
   }
 
-  method VCGenProc(proc: Procedure) returns (VCs: seq<Expr>) 
+  method VCGenProc(proc: Procedure, ghost md: M.Model) returns (VCs: seq<Expr>) 
     requires proc.Valid()
     // requires proc.IsSafe()
-    ensures (forall e <- VCs :: e.Holds()) ==> Omni.ProcedureIsSound(proc)
+    ensures (forall e <- VCs :: e.Holds(md)) ==> Omni.ProcedureIsSound(proc, md)
   {
     var context := mkInitialContext(proc);
     var bcont: Block.Continuation := [Block.Point(proc.PostCheck(), 0)];
     if proc.Body.Some? {
-      VCs := SeqVCGen([proc.Body.value], context, bcont);
-      if (forall e <- VCs :: e.Holds()) {
-        forall st: State | st in proc.PreSet()
-          ensures Omni.Sem(proc.Body.value, st, [proc.PostSet()]) {
-          assert context.IsSatisfiedOn(st) by {
+      VCs := SeqVCGen([proc.Body.value], context, bcont, md);
+      if (forall e <- VCs :: e.Holds(md)) {
+        forall st: State | st in proc.PreSet(md)
+          ensures Omni.Sem(proc.Body.value, st, [proc.PostSet(md)], md) {
+          assert context.IsSatisfiedOn(st, md) by {
             forall i <- context.incarnation {
               mkInitialContextLemma(proc,i);
             }
           }
-          assert Omni.Sem(proc.Body.value, context.AdjustState(st), BlockWPSeq(bcont, AllStates)) by {
-            Omni.SeqSemSingle(proc.Body.value, context.AdjustState(st), BlockWPSeq(bcont, AllStates));
+          assert Omni.Sem(proc.Body.value, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md) by {
+            Omni.SeqSemSingle(proc.Body.value, context.AdjustState(st), BlockWPSeq(bcont, AllStates, md), md);
           }
-          var wpSeq: Omni.Continuation := [Omni.SeqWP(proc.PostCheck(), [AllStates]), Omni.SeqWP(proc.PostCheck(), [AllStates])];
-          assert BlockWPSeq(bcont, AllStates) == wpSeq by {
+          var wpSeq: Omni.Continuation := [Omni.SeqWP(proc.PostCheck(), [AllStates], md), Omni.SeqWP(proc.PostCheck(), [AllStates], md)];
+          assert BlockWPSeq(bcont, AllStates, md) == wpSeq by {
             wpSeq.Update0();
           }
-          Omni.SemConsDepthLemma(proc.Body.value, context.AdjustState(st), wpSeq, [proc.PostSet()], 0) by {
-            forall st: State | Omni.SeqSem(proc.PostCheck(), st, [AllStates])
-              ensures st in proc.PostSet() {
-              Omni.SemPostCheckLemma(proc, st, [AllStates]);
+          Omni.SemConsDepthLemma(proc.Body.value, context.AdjustState(st), wpSeq, [proc.PostSet(md)], 0, md) by {
+            forall st: State | Omni.SeqSem(proc.PostCheck(), st, [AllStates], md)
+              ensures st in proc.PostSet(md) {
+              Omni.SemPostCheckLemma(proc, st, [AllStates], md);
             }
           }
           assert context.AdjustState(st) == st;
@@ -539,30 +539,30 @@ module VCGenOmni {
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
  */
 
-  method VCGenProcs(procs: seq<Procedure>, funcs: seq<Function>) returns (VCs: seq<Expr>)
+  method VCGenProcs(procs: seq<Procedure>, funcs: seq<Function>, ghost md: M.Model) returns (VCs: seq<Expr>)
     requires forall proc <- procs :: proc.Valid()
     requires forall proc <- procs :: proc.ProceduresCalled() <= SetOfSeq(procs)
     requires forall func <- funcs :: func.FunctionsCalled() <= SetOfSeq(funcs)
     requires forall proc <- procs :: proc.FunctionsCalled() <= SetOfSeq(funcs)
-    requires forall func <- funcs :: func.IsSound()
-    ensures (forall e <- VCs :: e.RefHolds()) ==> 
-      forall proc <- procs :: Omni.RefProcedureIsSound(proc)
+    requires forall func <- funcs :: func.IsSound(md)
+    ensures (forall e <- VCs :: e.RefHolds(md)) ==> 
+      forall proc <- procs :: Omni.RefProcedureIsSound(proc, md)
   {
     VCs := [];
     var VCs';
     for i := 0 to |procs| 
-      invariant (forall e <- VCs :: e.Holds()) ==> forall proc <- procs[..i] :: Omni.ProcedureIsSound(proc)
+      invariant (forall e <- VCs :: e.Holds(md)) ==> forall proc <- procs[..i] :: Omni.ProcedureIsSound(proc, md)
     {
-      VCs' := VCGenProc(procs[i]) by {
+      VCs' := VCGenProc(procs[i], md) by {
         assert procs[i] in procs;
       }
       VCs := VCs + VCs';
     }
-    if (forall e <- VCs :: e.RefHolds()) {
+    if (forall e <- VCs :: e.RefHolds(md)) {
       forall e <- VCs, st: State | e.IsDefinedOn(|st|) {
-        e.EvalComplete(st, iset{M.True});
+        e.EvalComplete(st, iset{md.True()}, md);
       }
-      Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs));
+      Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs), md);
     }
   }
 }

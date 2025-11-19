@@ -323,32 +323,32 @@ module AST {
     }
 
 
-    ghost predicate InPreSet(st: State) 
+    ghost predicate InPreSet(st: State, m: M.Model) 
       // reads *
     {
       && |Parameters| + NumInOutArgs() == |st|
       && (forall i: nat :: i < NumInOutArgs() ==> 
         (InOutVarsIdxsLemma(Parameters, 0, i);
          st[i + |Parameters|] == st[InOutVarsIdxs()[i]]))
-      && forall e <- Pre :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
+      && forall e <- Pre :: e.IsDefinedOn(|st|) && e.HoldsOn(st, m)
     }
 
-    ghost function PreSet(): iset<State> 
+    ghost function PreSet(m: M.Model): iset<State> 
       // reads *
     {
-      iset st: State | InPreSet(st)
+      iset st: State | InPreSet(st, m)
     }
 
-    ghost predicate InPostSet(st: State) 
+    ghost predicate InPostSet(st: State, m: M.Model) 
       // reads *
     {
-      forall e <- Post :: e.IsDefinedOn(|st|) && e.HoldsOn(st)
+      forall e <- Post :: e.IsDefinedOn(|st|) && e.HoldsOn(st, m)
     }
 
-    ghost function PostSet(): iset<State> 
+    ghost function PostSet(m: M.Model): iset<State> 
       // reads *
     {
-      iset st': State | InPostSet(st')
+      iset st': State | InPostSet(st', m)
     }
 
     function PostCheck'(p: seq<Expr>): seq<Stmt> 

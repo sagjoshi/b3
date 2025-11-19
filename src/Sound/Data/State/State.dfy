@@ -3,9 +3,9 @@ module State {
   import opened Std.Wrappers
   import opened Model
 
-  function SomeBVal?(o: Option<Any>): bool {
+  function SomeBVal?(o: Option<Any>, m: Model): bool {
     match o
-    case Some(b) => IsBool(b)
+    case Some(b) => m.IsBool(b)
     case _ => false
   }
 

@@ -1,12 +1,12 @@
-module AssignmentTarget' {
+module AssignmentTarget {
   import opened Utils
   import opened AST
   import opened State
-  import opened Model
+  import M = Model
   import Omni
 
   export
-    provides Utils, AST, State, Model, Omni, Process, Correct
+    provides Utils, AST, M, Omni, State, Process, Correct
     reveals PairToSet
   
   newtype VarsJumps = map<nat, set<Idx>> {
@@ -224,42 +224,42 @@ module AssignmentTarget' {
       else v0
   }
 
-  lemma Process'Correct(stmt: Stmt, st: State, m: VarsJumps, posts: Omni.Continuation) 
+  lemma Process'Correct(stmt: Stmt, st: State, m: VarsJumps, posts: Omni.Continuation, md: M.Model) 
     requires stmt.ValidCalls()
     requires Process'(stmt) == m
     ensures forall v <- m.Values, s <- v :: s < stmt.Depth()
-    requires Omni.Sem(stmt, st, posts)
-    ensures Omni.Sem(stmt, st, m.ToEqs(st, posts))
+    requires Omni.Sem(stmt, st, posts, md)
+    ensures Omni.Sem(stmt, st, m.ToEqs(st, posts), md)
   {
     match stmt 
     case Choice(s0, s1) =>
       var m0 := Process'(s0);
       var m1 := Process'(s1);
-      Omni.SemCons(s0, st, m0.ToEqs(st, posts), m0.Merge(m1).ToEqs(st, posts)) by {
-        Process'Correct(s0, st, m0, posts);
+      Omni.SemCons(s0, st, m0.ToEqs(st, posts), m0.Merge(m1).ToEqs(st, posts), md) by {
+        Process'Correct(s0, st, m0, posts, md);
       }
-      Omni.SemCons(s1, st, m1.ToEqs(st, posts), m0.Merge(m1).ToEqs(st, posts)) by {
-        Process'Correct(s1, st, m1, posts);
+      Omni.SemCons(s1, st, m1.ToEqs(st, posts), m0.Merge(m1).ToEqs(st, posts), md) by {
+        Process'Correct(s1, st, m1, posts, md);
       }
     case Loop(_, body) =>
       var inv :| 
         && st in inv
-        && Omni.PreservesInv(inv, body, posts);
+        && Omni.PreservesInv(inv, body, posts, md);
       var m' := Process'(body);
       var inv' := inv * m'.ToEqsAll(st);
       assert st in inv';
-      forall st': State | st' in inv' ensures Omni.Sem(body, st', (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')) {
-        Omni.SemCons(body, st', m'.ToEqs(st', posts.UpdateHead(inv)), (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv')) by {
-          Process'Correct(body, st', m', posts.UpdateHead(inv)) by {
-            assert Omni.PreservesInv(inv, body, posts);
+      forall st': State | st' in inv' ensures Omni.Sem(body, st', (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv'), md) {
+        Omni.SemCons(body, st', m'.ToEqs(st', posts.UpdateHead(inv)), (m'.Remove0()).ToEqs(st, posts).UpdateHead(inv'), md) by {
+          Process'Correct(body, st', m', posts.UpdateHead(inv), md) by {
+            assert Omni.PreservesInv(inv, body, posts, md);
           }
         }
       }
     case NewScope(n, s) => 
-      forall vs: State | |vs| == n ensures Omni.Sem(s, st.Update(vs), m.ToEqs(st, posts).UpdateAndAdd(n)) {
+      forall vs: State | |vs| == n ensures Omni.Sem(s, st.Update(vs), m.ToEqs(st, posts).UpdateAndAdd(n), md) {
         var m' := Process'(s);
-        Omni.SemCons(s, st.Update(vs), m'.ToEqs(st.Update(vs), posts.UpdateAndAdd(n)), m.ToEqs(st, posts).UpdateAndAdd(n)) by {
-          Process'Correct(s, st.Update(vs), m', posts.UpdateAndAdd(n));
+        Omni.SemCons(s, st.Update(vs), m'.ToEqs(st.Update(vs), posts.UpdateAndAdd(n)), m.ToEqs(st, posts).UpdateAndAdd(n), md) by {
+          Process'Correct(s, st.Update(vs), m', posts.UpdateAndAdd(n), md);
           forall i: Idx | i < |posts| + 1 
             ensures m'.ToEqs(st.Update(vs), posts.UpdateAndAdd(n))[i] <=
               m'.Substract(n).ToEqs(st, posts).UpdateAndAdd(n)[i]
@@ -313,48 +313,48 @@ module AssignmentTarget' {
           }
         }
       }
-    case Seq(ss) => SeqProcess'Correct(ss, st, m, posts);
+    case Seq(ss) => SeqProcess'Correct(ss, st, m, posts, md);
     case Call(proc, args) => 
       forall st': State |
         && st' in st.EqExcept(args.OutArgs())
         && var callSt' := args.Eval(st') + args.EvalOld(st);
-          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt'))
+          (forall e <- proc.Post :: e.IsDefinedOn(|callSt'|) && e.HoldsOn(callSt', md))
         ensures st' in m.ToEqs(st, posts).head
       { assert |st'| == |st|; }
     case _ =>
   }
 
-  lemma SeqProcess'Correct(ss: seq<Stmt>, st: State, m: VarsJumps, posts: Omni.Continuation) 
+  lemma SeqProcess'Correct(ss: seq<Stmt>, st: State, m: VarsJumps, posts: Omni.Continuation, md: M.Model) 
     requires SeqValidCalls(ss)
     requires SeqProcess'(ss) == m
     ensures forall v <- m.Values, s <- v :: s < SeqDepth(ss)
-    requires Omni.SeqSem(ss, st, posts)
-    ensures Omni.SeqSem(ss, st, m.ToEqs(st, posts))
+    requires Omni.SeqSem(ss, st, posts, md)
+    ensures Omni.SeqSem(ss, st, m.ToEqs(st, posts), md)
   {
     if ss != [] {
-      Omni.SemNest(ss[0], ss[1..], st, m.ToEqs(st, posts)) by {
-        assert Omni.Sem(ss[0], st, m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..],  m.ToEqs(st, posts)))) by {
-          assert Omni.Sem(ss[0], st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts)));
+      Omni.SemNest(ss[0], ss[1..], st, m.ToEqs(st, posts), md) by {
+        assert Omni.Sem(ss[0], st, m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..],  m.ToEqs(st, posts), md)), md) by {
+          assert Omni.Sem(ss[0], st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md)), md);
           var m' := Process'(ss[0]);
           var m'' := SeqProcess'(ss[1..]);
-          Process'Correct(ss[0], st, m', posts.UpdateHead(Omni.SeqWP(ss[1..], posts)));
-          assert Omni.Sem(ss[0], st, m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts))));
-          Omni.SemCons(ss[0], st, m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts))), 
-            m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))) by {
-            assert m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts))).Leq(
-              m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))) by {
+          Process'Correct(ss[0], st, m', posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md)), md);
+          assert Omni.Sem(ss[0], st, m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md))), md);
+          Omni.SemCons(ss[0], st, m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md))), 
+            m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts), md)), md) by {
+            assert m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md))).Leq(
+              m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts), md))) by {
               if 0 in m'.Keys {
                 forall i: Idx | i < |posts| 
-                  ensures m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts)))[i] <=
-                        m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))[i]
+                  ensures m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md)))[i] <=
+                        m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts), md))[i]
                 {
-                  forall st': State | st' in m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts)))[i] 
-                    ensures st' in m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts)))[i]
+                  forall st': State | st' in m'.ToEqs(st, posts.UpdateHead(Omni.SeqWP(ss[1..], posts, md)))[i] 
+                    ensures st' in m.ToEqs(st, posts).UpdateHead(Omni.SeqWP(ss[1..], m.ToEqs(st, posts), md))[i]
                   {
                     if i == 0 {
                       assert forall j: Idx :: j < |st| && !(j in m'.Get(0)) ==> st[j] == st'[j];
-                      SeqProcess'Correct(ss[1..], st', m'', posts);
-                      Omni.SeqSemCons(ss[1..], st', m''.ToEqs(st', posts), m'.SeqMerge(m'').ToEqs(st, posts)) by {
+                      SeqProcess'Correct(ss[1..], st', m'', posts, md);
+                      Omni.SeqSemCons(ss[1..], st', m''.ToEqs(st', posts), m'.SeqMerge(m'').ToEqs(st, posts), md) by {
                         forall i: Idx | i < |posts| 
                           ensures m''.ToEqs(st', posts)[i] <= m'.SeqMerge(m'').ToEqs(st, posts)[i]
                         {
@@ -376,7 +376,7 @@ module AssignmentTarget' {
                           }
                         }
                       }
-                      assert Omni.SeqSem(ss[1..], st', m.ToEqs(st, posts));
+                      assert Omni.SeqSem(ss[1..], st', m.ToEqs(st, posts), md);
                     } else {
                       assert st' in m'.SeqMerge(m'').ToEqs(st, posts)[i] by {
                         if i in m'.Keys {
@@ -414,27 +414,27 @@ module AssignmentTarget' {
 
 
 
-  lemma Correct'(stmt: Stmt, st: State, vars: set<Idx>, posts: Omni.Continuation) 
+  lemma Correct'(stmt: Stmt, st: State, vars: set<Idx>, posts: Omni.Continuation, md: M.Model) 
     requires stmt.ValidCalls()
     requires forall v <- vars :: v < |st|
-    requires Omni.Sem(stmt, st, posts)
+    requires Omni.Sem(stmt, st, posts, md)
     requires Process(stmt) == vars
-    ensures Omni.Sem(stmt, st, posts.UpdateHead(posts.head * st.EqExcept(vars)))
+    ensures Omni.Sem(stmt, st, posts.UpdateHead(posts.head * st.EqExcept(vars)), md)
   {
-    Process'Correct(stmt, st, Process'(stmt), posts);
-    Omni.SemCons(stmt, st, Process'(stmt).ToEqs(st, posts), posts.UpdateHead(posts.head * st.EqExcept(vars)));
+    Process'Correct(stmt, st, Process'(stmt), posts, md);
+    Omni.SemCons(stmt, st, Process'(stmt).ToEqs(st, posts), posts.UpdateHead(posts.head * st.EqExcept(vars)), md);
   }
 
-  lemma Correct(stmt: Stmt, st: State, st': State, vars: set<Idx>, posts: Omni.Continuation, post: iset<State>) 
+  lemma Correct(stmt: Stmt, st: State, st': State, vars: set<Idx>, posts: Omni.Continuation, post: iset<State>, md: M.Model) 
     requires stmt.ValidCalls()
     requires forall v <- vars :: v < |st'|
-    requires Omni.Sem(stmt, st, posts.UpdateHead(post))
+    requires Omni.Sem(stmt, st, posts.UpdateHead(post), md)
     requires Process(stmt) == vars
     requires st in st'.EqExcept(vars)
-    ensures Omni.Sem(stmt, st, posts.UpdateHead(post * st'.EqExcept(vars)))
+    ensures Omni.Sem(stmt, st, posts.UpdateHead(post * st'.EqExcept(vars)), md)
   {
-    Correct'(stmt, st, vars, posts.UpdateHead(post));
+    Correct'(stmt, st, vars, posts.UpdateHead(post), md);
     assert posts.UpdateHead(post).UpdateHead(posts.UpdateHead(post).head * st.EqExcept(vars)) == posts.UpdateHead(post * st.EqExcept(vars));
-    Omni.SemCons(stmt, st, posts.UpdateHead(post * st.EqExcept(vars)), posts.UpdateHead(post * st'.EqExcept(vars)));
+    Omni.SemCons(stmt, st, posts.UpdateHead(post * st.EqExcept(vars)), posts.UpdateHead(post * st'.EqExcept(vars)), md);
   }
 }

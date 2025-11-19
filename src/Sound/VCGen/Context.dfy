@@ -9,16 +9,16 @@ module Context {
     ctx: seq<Expr>,
     incarnation: seq<nat>) 
   {
-    ghost function Models() : iset<State> { iset st: State | IsSatisfiedOn(st) }
+    ghost function Models(md: M.Model) : iset<State> { iset st: State | IsSatisfiedOn(st, md) }
 
-    ghost function AdjustedModels() : iset<State> { 
-      iset st: State | exists st' <- Models() {:InAdjustedModelsLemma(st')} :: AdjustState(st') == st
+    ghost function AdjustedModels(md: M.Model) : iset<State> { 
+      iset st: State | exists st' <- Models(md) {:InAdjustedModelsLemma(st', md)} :: AdjustState(st') == st
     }
 
-    lemma InAdjustedModelsLemma(st: State, st': State)
-      requires IsSatisfiedOn(st')
+    lemma InAdjustedModelsLemma(st: State, st': State, md: M.Model)
+      requires IsSatisfiedOn(st', md)
       requires st == AdjustState(st')
-      ensures st in AdjustedModels()
+      ensures st in AdjustedModels(md)
     {
 
     }
@@ -100,29 +100,29 @@ module Context {
       assert MkEntailment(e) == MkEntailmentSeq(ss)[Index(ss, e)];
     }
 
-    lemma MkEntailmentLemma(e: Expr, st: State)
+    lemma MkEntailmentLemma(e: Expr, st: State, md: M.Model)
       requires e.IsDefinedOn(|incarnation|)
       requires forall ic <- incarnation :: ic < |st|
-      requires IsSatisfiedOn(st)
-      requires MkEntailment(e).Holds()
-      ensures e.HoldsOn(AdjustState(st))
+      requires IsSatisfiedOn(st, md)
+      requires MkEntailment(e).Holds(md)
+      ensures e.HoldsOn(AdjustState(st), md)
     {
       assert Implies(Conj(ctx), Substitute(e)).IsDefinedOn(|st|) by {
         IsDefinedOnImpliesLemma(Conj(ctx), Substitute(e), st) by {
-          EvalConjLemma(ctx, st);
+          EvalConjLemma(ctx, st, md);
           SubstituteIsDefinedOnLemma(e, |st|);
         }
       }
-      assert e.HoldsOn(AdjustState(st)) by { 
+      assert e.HoldsOn(AdjustState(st), md) by { 
         calc {
-          e.HoldsOn(AdjustState(st));
+          e.HoldsOn(AdjustState(st), md);
           { SubstituteIsDefinedOnLemma(e, |st|);
-            AdjustStateSubstituteLemma(st, e); }
-          Substitute(e).HoldsOn(st);
-          { EvalConjLemma(ctx, st);
-            AdjustStateSubstituteLemma(st, e);
-            HoldsOnImpliesLemma(Conj(ctx), Substitute(e), st); }
-          MkEntailment(e).Holds();
+            AdjustStateSubstituteLemma(st, e, md); }
+          Substitute(e).HoldsOn(st, md);
+          { EvalConjLemma(ctx, st, md);
+            AdjustStateSubstituteLemma(st, e, md);
+            HoldsOnImpliesLemma(Conj(ctx), Substitute(e), st, md); }
+          MkEntailment(e).Holds(md);
         }
       }
    }
@@ -319,19 +319,12 @@ module Context {
       forall e <- ctx :: e.IsDefinedOn(d)
     }
 
-    ghost predicate IsSatisfiedOn(s: State) 
+    ghost predicate IsSatisfiedOn(s: State, md: M.Model) 
       // reads *
     {
         && IsDefinedOn(|s|)
         && (forall i <- incarnation :: i < |s|)
-        && (forall e <- ctx :: e.HoldsOn(s))
-    }
-
-    ghost predicate Entails(e: Expr) 
-      // reads *
-    {
-      forall s: State ::  
-        e.IsDefinedOn(|s|) && IsSatisfiedOn(s) ==> e.HoldsOn(s)
+        && (forall e <- ctx :: e.HoldsOn(s, md))
     }
 
     lemma SubstituteIdxIsDefinedOnLemma(e: Expr, i: Idx, d: Idx)
@@ -382,122 +375,122 @@ module Context {
       SubstituteIdxIsDefinedOnLemma(e, 0, d);
     }
 
-    lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr, tp: M.Type)
+    lemma ForallPush(s1: State, s2: State, e1: Expr, e2: Expr, tp: M.Type, md: M.Model)
       requires e1.IsDefinedOn(|s1| + 1)
       requires e2.IsDefinedOn(|s2| + 1)
-      requires forall b: M.Any | M.HasType(b, tp) :: e1.HoldsOn(s1.Update([b])) == e2.HoldsOn(s2.Update([b]))
-      ensures (forall b: M.Any | M.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]))) == (forall b: M.Any | M.HasType(b, tp) :: e2.HoldsOn(s2.Update([b])))
+      requires forall b: M.Any | md.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]), md) == e2.HoldsOn(s2.Update([b]), md)
+      ensures (forall b: M.Any | md.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]), md)) == (forall b: M.Any | md.HasType(b, tp) :: e2.HoldsOn(s2.Update([b]), md))
     {  }
 
-    lemma ExistsPush(s1: State, s2: State, e1: Expr, e2: Expr, tp: M.Type)
+    lemma ExistsPush(s1: State, s2: State, e1: Expr, e2: Expr, tp: M.Type, md: M.Model)
       requires e1.IsDefinedOn(|s1| + 1)
       requires e2.IsDefinedOn(|s2| + 1)
-      requires forall b: M.Any | M.HasType(b, tp) :: e1.HoldsOn(s1.Update([b])) == e2.HoldsOn(s2.Update([b]))
-      ensures (exists b: M.Any | M.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]))) == (exists b: M.Any | M.HasType(b, tp) :: e2.HoldsOn(s2.Update([b])))
+      requires forall b: M.Any | md.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]), md) == e2.HoldsOn(s2.Update([b]), md)
+      ensures (exists b: M.Any | md.HasType(b, tp) :: e1.HoldsOn(s1.Update([b]), md)) == (exists b: M.Any | md.HasType(b, tp) :: e2.HoldsOn(s2.Update([b]), md))
     {  }
 
-    lemma SeqAdjustStateSubstituteIdxLemma(ss: seq<Expr>, s: State, i: Idx)
+    lemma SeqAdjustStateSubstituteIdxLemma(ss: seq<Expr>, s: State, i: Idx, md: M.Model)
       requires SeqExprDepth(ss) <= |incarnation| + i
       requires forall ic <- incarnation :: ic + i < |s|
       requires i <= |s|
       ensures
         (SeqSubstituteIdxIsDefinedOnLemma(ss, i, |s|);
-         SeqEval(ss, s[..i] + AdjustState(s[i..])) == SeqEval(SeqSubstituteIdx(ss, i), s))
+         SeqEval(ss, s[..i] + AdjustState(s[i..]), md) == SeqEval(SeqSubstituteIdx(ss, i), s, md))
       decreases ss
     {
       if ss != [] {
-        SeqAdjustStateSubstituteIdxLemma(ss[1..], s, i);
+        SeqAdjustStateSubstituteIdxLemma(ss[1..], s, i, md);
         SeqSubstituteIdxIsDefinedOnLemma(ss, i, |s|);
-        AdjustStateSubstituteIdxLemma(s, ss[0], i);
+        AdjustStateSubstituteIdxLemma(s, ss[0], i, md);
       }
     }
 
 
-    lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx)
+    lemma AdjustStateSubstituteIdxLemma(s: State, e: Expr, i: Idx, md: M.Model)
       requires e.IsDefinedOn(|incarnation| + i)
       requires forall ic <- incarnation :: ic + i < |s|
       requires i <= |s|
       ensures (SubstituteIdxIsDefinedOnLemma(e, i, |s|);
-        e.Eval(s[..i] + AdjustState(s[i..]))) == SubstituteIdx(e, i).Eval(s)
+        e.Eval(s[..i] + AdjustState(s[i..]), md)) == SubstituteIdx(e, i).Eval(s, md)
       decreases e
     {
       match e 
       case OperatorExpr(op, args) => 
-        SeqAdjustStateSubstituteIdxLemma(args, s, i);
+        SeqAdjustStateSubstituteIdxLemma(args, s, i, md);
       case FunctionCallExpr(func, args) => 
-        SeqAdjustStateSubstituteIdxLemma(args, s, i);
+        SeqAdjustStateSubstituteIdxLemma(args, s, i, md);
       case QuantifierExpr(true, v, tp, body) => 
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
-        assert forall b: M.Any | M.HasType(b, tp.ToType()) :: 
-          body.Eval((s[..i] + AdjustState(s[i..])).Update([b])) == 
-          SubstituteIdx(body, i + 1).Eval(s.Update([b])) by {
-          forall b: M.Any | M.HasType(b, tp.ToType()) 
-            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([b])) == SubstituteIdx(body, i + 1).Eval(s.Update([b])) {
+        assert forall b: M.Any | md.HasType(b, tp.ToType()) :: 
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([b]), md) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([b]), md) by {
+          forall b: M.Any | md.HasType(b, tp.ToType()) 
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([b]), md) == SubstituteIdx(body, i + 1).Eval(s.Update([b]), md) {
             assert ([b] + s)[..i+1] == [b] + s[..i];
             assert ([b] + s)[i+1..] == s[i..];
             assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
-            AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
+            AdjustStateSubstituteIdxLemma([b] + s, body, i + 1, md);
           }
         }
-        ForallPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1), tp.ToType());
+        ForallPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1), tp.ToType(), md);
       case QuantifierExpr(false, v, tp, body) => 
         SubstituteIdxIsDefinedOnLemma(e, i, |s|);
-        assert forall b: M.Any | M.HasType(b, tp.ToType()) :: 
-          body.Eval((s[..i] + AdjustState(s[i..])).Update([b])) == 
-          SubstituteIdx(body, i + 1).Eval(s.Update([b])) by {
-          forall b: M.Any | M.HasType(b, tp.ToType()) 
-            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([b])) == SubstituteIdx(body, i + 1).Eval(s.Update([b])) {
+        assert forall b: M.Any | md.HasType(b, tp.ToType()) :: 
+          body.Eval((s[..i] + AdjustState(s[i..])).Update([b]), md) == 
+          SubstituteIdx(body, i + 1).Eval(s.Update([b]), md) by {
+          forall b: M.Any | md.HasType(b, tp.ToType()) 
+            ensures body.Eval((s[..i] + AdjustState(s[i..])).Update([b]), md) == SubstituteIdx(body, i + 1).Eval(s.Update([b]), md) {
             assert ([b] + s)[..i+1] == [b] + s[..i];
             assert ([b] + s)[i+1..] == s[i..];
             assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
-            AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
+            AdjustStateSubstituteIdxLemma([b] + s, body, i + 1, md);
           }
         }
-        ExistsPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1), tp.ToType());
+        ExistsPush(s[..i] + AdjustState(s[i..]), s, body, SubstituteIdx(body, i + 1), tp.ToType(), md);
       case BVar(v) => if v >= i { assert incarnation[v - i] in incarnation; }
       case LetExpr(v, rhs, body) => 
-        var b := SubstituteIdx(rhs, i).Eval(s) by {
+        var b := SubstituteIdx(rhs, i).Eval(s, md) by {
           SubstituteIdxIsDefinedOnLemma(rhs, i, |s|);
         }
         if b.Some? {
           var b := b.value;
           calc {
-            LetExpr(v, rhs, body).Eval(s[..i] + AdjustState(s[i..]));
+            LetExpr(v, rhs, body).Eval(s[..i] + AdjustState(s[i..]), md);
             ==
-            body.Eval((s[..i] + AdjustState(s[i..])).Update([rhs.Eval(s[..i] + AdjustState(s[i..])).value]));
+            body.Eval((s[..i] + AdjustState(s[i..])).Update([rhs.Eval(s[..i] + AdjustState(s[i..]), md).value]), md);
             == { SubstituteIdxIsDefinedOnLemma(rhs, i, |s|); }
-            body.Eval((s[..i] + AdjustState(s[i..])).Update([b]));
+            body.Eval((s[..i] + AdjustState(s[i..])).Update([b]), md);
             == { assert ([b] + s)[..i+1] == [b] + s[..i];
                 assert ([b] + s)[i+1..] == s[i..];
                 assert ((s[..i] + AdjustState(s[i..])).Update([b])) == (([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..])); }
-            body.Eval(([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]));
-            == { AdjustStateSubstituteIdxLemma([b] + s, body, i + 1);
+            body.Eval(([b] + s)[..i+1] + AdjustState(([b] + s)[i+1..]), md);
+            == { AdjustStateSubstituteIdxLemma([b] + s, body, i + 1, md);
                 SubstituteIdxIsDefinedOnLemma(body, i + 1, |s| + 1); }
-            SubstituteIdx(body, i + 1).Eval(s.Update([b]));
+            SubstituteIdx(body, i + 1).Eval(s.Update([b]), md);
           }
         }
       case _  => 
     }
 
-    lemma AdjustStateSubstituteEvalLemma(s: State, e: Expr)
+    lemma AdjustStateSubstituteEvalLemma(s: State, e: Expr, md: M.Model)
       requires e.IsDefinedOn(|incarnation|)
       requires forall ic <- incarnation :: ic < |s|
       ensures Substitute(e).IsDefinedOn(|s|)
-      ensures e.Eval(AdjustState(s)) == Substitute(e).Eval(s)
+      ensures e.Eval(AdjustState(s), md) == Substitute(e).Eval(s, md)
     {
       SubstituteIsDefinedOnLemma(e, |s|);
-      AdjustStateSubstituteIdxLemma(s, e, 0);
+      AdjustStateSubstituteIdxLemma(s, e, 0, md);
       assert [] + AdjustState(s) == AdjustState(s);
     }
 
-    lemma AdjustStateSubstituteLemma(s: State, e: Expr)
+    lemma AdjustStateSubstituteLemma(s: State, e: Expr, md: M.Model)
       requires e.IsDefinedOn(|incarnation|)
       requires forall ic <- incarnation :: ic < |s|
       ensures Substitute(e).IsDefinedOn(|s|)
-      ensures e.HoldsOn(AdjustState(s)) == Substitute(e).HoldsOn(s)
+      ensures e.HoldsOn(AdjustState(s), md) == Substitute(e).HoldsOn(s, md)
     {
       SubstituteIsDefinedOnLemma(e, |s|);
-      AdjustStateSubstituteIdxLemma(s, e, 0);
+      AdjustStateSubstituteIdxLemma(s, e, 0, md);
       assert [] + AdjustState(s) == AdjustState(s);
     }
   }
