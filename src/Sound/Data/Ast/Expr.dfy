@@ -513,6 +513,13 @@ module Expr {
     forall e <- ss :: e.RefHolds(md)
   }
 
+  ghost predicate SeqRefHoldsWith(ss: seq<Expr>, funs: set<Function>)
+    reads *
+  {
+    forall md: M.Model ::
+      (forall func <- funs :: func.IsSound(md)) ==> SeqRefHolds(ss, md)
+  }
+
   function SeqExprFunctionsCalled(ss: seq<Expr>): set<Function>
   {
     if ss == [] then {} else ss[0].FunctionsCalled() + SeqExprFunctionsCalled(ss[1..])

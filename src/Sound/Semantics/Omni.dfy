@@ -14,7 +14,8 @@ module Omni {
       Sem, SeqSem, WP, SeqWP, SemSingle, 
       Continuation, Continuation.Update, Continuation.UpdateAndAdd, Continuation.head, 
       Continuation.Leq, Continuation.LeqDepth,
-      Continuation.UpdateHead, PreservesInv, Continuation.Get, RefProcedureIsSound, ProcedureIsSound
+      Continuation.UpdateHead, PreservesInv, Continuation.Get, 
+      RefProcedureIsSound, ProcedureIsSound, RefProcedureIsSoundWith
 
   /**
   
@@ -232,6 +233,14 @@ module Omni {
     proc.Body.Some? ==>
       forall st: State :: st in proc.PreSet(m) ==>
         RefSem(proc.Body.value, st, SingleCont(proc.PostSet(m)), m)
+  }
+
+  ghost predicate RefProcedureIsSoundWith(proc: Procedure, funs: set<Function>)
+    reads *
+  {
+      forall md: M.Model ::
+        (forall func <- funs :: func.IsSound(md)) ==>
+          RefProcedureIsSound(proc, md)
   }
 
   ghost predicate ProcedureIsSound(proc: Procedure, m: M.Model) 

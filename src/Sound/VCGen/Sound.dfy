@@ -564,10 +564,8 @@ module VCGenOmni {
     requires forall func <- funcs :: func.FunctionsCalled() <= SetOfSeq(funcs)
     requires forall proc <- procs :: proc.FunctionsCalled() <= SetOfSeq(funcs)
     ensures 
-      forall md: M.Model :: 
-      (forall func <- funcs :: func.IsSound(md)) ==>
-      SeqRefHolds(VCs, md) ==> 
-        forall proc <- procs :: Omni.RefProcedureIsSound(proc, md)
+      SeqRefHoldsWith(VCs, SetOfSeq(funcs)) ==> 
+      forall proc <- procs :: Omni.RefProcedureIsSoundWith(proc, SetOfSeq(funcs))
   {
     VCs := [];
     var VCs';
@@ -587,18 +585,18 @@ module VCGenOmni {
         assert SeqHolds(VCs'', md);
       }
     }
-    forall md: M.Model |
-      && (forall func <- funcs :: func.IsSound(md))
-      && SeqRefHolds(VCs, md)
-      ensures forall proc <- procs :: Omni.RefProcedureIsSound(proc, md)
-    {
-      forall e <- VCs, st: State | e.IsDefinedOn(|st|) 
-      ensures e.HoldsOn(st, md) 
-      {
-        e.EvalComplete(st, iset{md.True()}, md);
+    if SeqRefHoldsWith(VCs, SetOfSeq(funcs)) {
+      forall md: M.Model {:trigger} |
+        (forall func <- funcs :: func.IsSound(md)) 
+        ensures forall proc <- procs :: Omni.RefProcedureIsSound(proc, md) {
+        assert SeqRefHolds(VCs, md);
+        forall e <- VCs, st: State | e.IsDefinedOn(|st|) 
+          ensures e.HoldsOn(st, md) {
+          e.EvalComplete(st, iset{md.True()}, md);
+        }
+        assert SeqHolds(VCs, md);
+        Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs), md);
       }
-      assert SeqHolds(VCs, md);
-      Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs), md);
     }
   }
 }
