@@ -502,6 +502,17 @@ module Expr {
     }
   }
 
+  ghost predicate SeqHolds(ss: seq<Expr>, md: M.Model)
+  {
+    forall e <- ss :: e.Holds(md)
+  }
+
+  ghost predicate SeqRefHolds(ss: seq<Expr>, md: M.Model)
+    reads *
+  {
+    forall e <- ss :: e.RefHolds(md)
+  }
+
   function SeqExprFunctionsCalled(ss: seq<Expr>): set<Function>
   {
     if ss == [] then {} else ss[0].FunctionsCalled() + SeqExprFunctionsCalled(ss[1..])
