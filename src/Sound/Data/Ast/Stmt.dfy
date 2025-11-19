@@ -106,7 +106,7 @@ module AST {
       case Seq(ss) => SeqFunctionsCalled(ss)
       case Choice(s0, s1) => s0.FunctionsCalled() + s1.FunctionsCalled()
       case NewScope(_, s) => s.FunctionsCalled()
-      case Loop(_, body) => body.FunctionsCalled()
+      case Loop(_, body) => body.FunctionsCalled() + inv.FunctionsCalled()
       case Check(e) => e.FunctionsCalled()
       case Assume(e) => e.FunctionsCalled()
       case Assign(_, rhs) => rhs.FunctionsCalled()
@@ -436,7 +436,7 @@ module AST {
     function FunctionsCalled(): set<Function> 
       reads this`Body
     {
-      if Body.Some? then Body.value.FunctionsCalled() else {}
+      if Body.Some? then Body.value.FunctionsCalled() + SeqExprFunctionsCalled(Pre) + SeqExprFunctionsCalled(Post) else {}
     }
   }
 
@@ -478,6 +478,7 @@ module AST {
     ensures SeqSize(ss1 + ss2) == SeqSize(ss1) + SeqSize(ss2)
     ensures SeqDepth(ss1 + ss2) == max(SeqDepth(ss1), SeqDepth(ss2))
     ensures SeqJumpDepth(ss1 + ss2) == max(SeqJumpDepth(ss1), SeqJumpDepth(ss2))
+    ensures SeqFunctionsCalled(ss1 + ss2) == SeqFunctionsCalled(ss1) + SeqFunctionsCalled(ss2)
   {
     if ss1 == [] {
       assert ss1 + ss2 == ss2;

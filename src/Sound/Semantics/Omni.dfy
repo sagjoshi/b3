@@ -449,8 +449,10 @@ module Omni {
       case Assign(x, v) =>
         assert (v.RefEval(st, iset v {:trigger} | true) ==>
         v.RefEval(st, iset v {:trigger} | st.UpdateAt(x, v) in posts.head)) by {
-          v.EvalSound(st, funs, iset v {:trigger} | true);
-          v.EvalSound(st, funs, iset u {:trigger} | st.UpdateAt(x, u) in posts.head);
+          if v.RefEval(st, iset v {:trigger} | true) {
+            v.EvalComplete(st, iset v {:trigger} | true);
+            v.EvalSound(st, funs, iset v {:trigger} | st.UpdateAt(x, v) in posts.head);
+          }
         }
       case _ =>
   }

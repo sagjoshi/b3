@@ -545,12 +545,8 @@ module VCGenOmni {
     requires forall func <- funcs :: func.FunctionsCalled() <= SetOfSeq(funcs)
     requires forall proc <- procs :: proc.FunctionsCalled() <= SetOfSeq(funcs)
     requires forall func <- funcs :: func.IsSound()
-    ensures (forall e <- VCs :: e.Holds()) ==> 
+    ensures (forall e <- VCs :: e.RefHolds()) ==> 
       forall proc <- procs :: Omni.RefProcedureIsSound(proc)
-    /** 
-      UniversallClosure(VCs).Eval(State.empty, iset v | v == M.True ==>
-         forall proc <- procs :: Omni.RefProcedureIsSound(proc)
-    */
   {
     VCs := [];
     var VCs';
@@ -562,7 +558,10 @@ module VCGenOmni {
       }
       VCs := VCs + VCs';
     }
-    if (forall e <- VCs :: e.Holds()) {
+    if (forall e <- VCs :: e.RefHolds()) {
+      forall e <- VCs, st: State | e.IsDefinedOn(|st|) {
+        e.EvalComplete(st, iset{M.True});
+      }
       Omni.SemSoundProcs(SetOfSeq(procs), SetOfSeq(funcs));
     }
   }

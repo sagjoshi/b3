@@ -1,6 +1,7 @@
 module Block {
   import opened Utils
-  import opened Model
+  import M = Model
+  import opened Expr
   import opened AST
   import opened State
 
@@ -10,6 +11,21 @@ module Block {
 
     predicate ValidCalls() {
       forall p <- this :: SeqValidCalls(p.cont)
+    }
+
+    function FunctionsCalled(): set<Function> {
+      if this == [] then {} else SeqFunctionsCalled(this[0].cont) + this[1..].FunctionsCalled()
+    }
+
+    lemma FunctionsCalledSuffix(l: nat)
+      requires l < |this|
+      ensures this[l..].FunctionsCalled() <= FunctionsCalled()
+    {
+      if l != 0 {
+        assert this[l..] == [this[l]] + this[l + 1..];
+        // TODO: Might be a soundness bug
+        FunctionsCalledSuffix(l - 1);
+      }
     }
 
     function Update(cont: seq<Stmt>, varsInScope: nat): Continuation {
