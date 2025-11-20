@@ -1,9 +1,9 @@
 module State {
   import opened Utils
   import opened Std.Wrappers
-  import opened Model
+  import M = Model
 
-  function SomeBVal?(o: Option<Any>, m: Model): bool {
+  function SomeBVal?(o: Option<M.Any>, m: M.Model): bool {
     match o
     case Some(b) => m.IsBool(b)
     case _ => false
@@ -15,103 +15,124 @@ module State {
   //   case _ => false
   // }
 
-  function Singleton(val: Any): State
+  datatype Type = 
+    | BType 
+    | IType 
+    | CustomType(typ: M.Type)
   {
-    [val]
+    function ToType(): M.Type {
+      match this
+      case BType => M.Bool
+      case IType => M.Int
+      case CustomType(typ) => typ
+    }
   }
 
-  function ToState(args: seq<Any>): State
-  {
-    args as State
-  }
+  datatype Variable = Variable(name: string, typ: Type)
 
-  newtype State = seq<Any> {
-    function Update(vals: State): State 
+  // function Singleton(val: M.Any): State
+  // {
+  //   [val]
+  // }
+
+  // function ToState(args: map<Variable, M.Any>): State
+  // {
+  //   args as State
+  // }
+
+  newtype State = map<Variable, M.Any> {
+
+    function Update(vals: map<Variable, M.Any>): State 
     {
-      vals + this
+      ((vals + (this as map<Variable, M.Any>)) as State)
     }
 
-    function Size(): Idx {
+    function Size(): nat {
       |this|
     }
 
-    function UpdateAt(i: Idx, val: Any): State
-      requires i < |this|
+    function UpdateAt(v: Variable, val: M.Any): State
     {
-      this[i := val]
+      this[v := val]
     }
 
-    function UpdateMapShift(i: Idx, vals: map<Idx, Any>): State  
-      ensures |UpdateMapShift(i, vals)| > i
-      ensures |UpdateMapShift(i, vals)| >= |this|
-      ensures forall v <- vals.Keys :: |UpdateMapShift(i, vals)| > v + i
-      ensures |UpdateMapShift(i, vals)| > Max'(vals.Keys) + i
-      ensures forall j: Idx :: j < |this| && (j < i || j - i !in vals.Keys) ==> UpdateMapShift(i, vals)[j] == this[j]
-      ensures forall j: Idx :: j in vals.Keys ==> UpdateMapShift(i, vals)[j + i] == vals[j]
+    function Restrict(vars: set<Variable>): State
+      ensures Restrict(vars).Keys == this.Keys * vars
     {
-      var m := Max'(vals.Keys);
-      seq(max(i + m + 1, |this|), (j: nat) requires j < max(i + m + 1, |this|) => 
-        if j - i in vals.Keys then 
-          vals[j - i] 
-        else if j < |this| then
-          this[j]
-        else Bot()
-      )
+      map v | v in this.Keys && v in vars :: this[v]
     }
 
-    function UpdateOrAdd(i: Idx, val: Any): State 
-      ensures |UpdateOrAdd(i, val)| > i
-      ensures |UpdateOrAdd(i, val)| >= |this|
-      ensures forall j: Idx :: j < |this| ==> j != i ==> UpdateOrAdd(i, val)[j] == this[j]
-      ensures UpdateOrAdd(i, val)[i] == val
+    function Without(vars: set<Variable>): State
+      ensures Without(vars).Keys == this.Keys - vars
     {
-      UpdateMapShift(i, map[0 := val])
+      map v | v in this.Keys && v !in vars :: this[v]
     }
 
-    function MergeAt(i: Idx, vals: State): State 
-      ensures |MergeAt(i, vals)| >= i + |vals|
-      ensures |MergeAt(i, vals)| >= |this|
-      ensures forall j: Idx :: j < |this| ==> j < i || j >= i + |vals| ==> MergeAt(i, vals)[j] == this[j]
-      ensures forall j: Idx :: i <= j < i + |vals| ==> MergeAt(i, vals)[j] == vals[j - i]
-    {
-      var m := map j: Idx | j < |vals| :: vals[j];
-      ghost var m' := if m.Keys == {} then 0 else Max(m.Keys);
-      assert m' + 1 >= |vals| by {
-        if vals != [] {
-          assert |vals| - 1 in m.Keys;
-        }
-      }
-      UpdateMapShift(i, m)
-    }
+    // function UpdateMapShift(i: Idx, vals: map<Idx, M.Any>): State  
+    //   ensures |UpdateMapShift(i, vals)| > i
+    //   ensures |UpdateMapShift(i, vals)| >= |this|
+    //   ensures forall v <- vals.Keys :: |UpdateMapShift(i, vals)| > v + i
+    //   ensures |UpdateMapShift(i, vals)| > Max'(vals.Keys) + i
+    //   ensures forall j: Idx :: j < |this| && (j < i || j - i !in vals.Keys) ==> UpdateMapShift(i, vals)[j] == this[j]
+    //   ensures forall j: Idx :: j in vals.Keys ==> UpdateMapShift(i, vals)[j + i] == vals[j]
+    // {
+    //   var m := Max'(vals.Keys);
+    //   seq(max(i + m + 1, |this|), (j: nat) requires j < max(i + m + 1, |this|) => 
+    //     if j - i in vals.Keys then 
+    //       vals[j - i] 
+    //     else if j < |this| then
+    //       this[j]
+    //     else Bot()
+    //   )
+    // }
 
-    ghost function EqExcept(vars: set<Idx>) : iset<State>
+    // function UpdateOrAdd(i: Idx, val: M.Any): State 
+    //   ensures |UpdateOrAdd(i, val)| > i
+    //   ensures |UpdateOrAdd(i, val)| >= |this|
+    //   ensures forall j: Idx :: j < |this| ==> j != i ==> UpdateOrAdd(i, val)[j] == this[j]
+    //   ensures UpdateOrAdd(i, val)[i] == val
+    // {
+    //   UpdateMapShift(i, map[0 := val])
+    // }
+
+    // function MergeAt(i: Idx, vals: map<Variable, M.Any>): State 
+    //   ensures |MergeAt(i, vals)| >= i + |vals|
+    //   ensures |MergeAt(i, vals)| >= |this|
+    //   ensures forall j: Idx :: j < |this| ==> j < i || j >= i + |vals| ==> MergeAt(i, vals)[j] == this[j]
+    //   ensures forall j: Idx :: i <= j < i + |vals| ==> MergeAt(i, vals)[j] == vals[j - i]
+    // {
+    //   var m := map j: Idx | j < |vals| :: vals[j];
+    //   ghost var m' := if m.Keys == {} then 0 else Max(m.Keys);
+    //   assert m' + 1 >= |vals| by {
+    //     if vals != [] {
+    //       assert |vals| - 1 in m.Keys;
+    //     }
+    //   }
+    //   UpdateMapShift(i, m)
+    // }
+
+    ghost function EqExcept(vars: set<Variable>) : iset<State>
     {
       iset st': State | 
-        && |st'| == |this|
-        && forall i: Idx :: i < |this| && i !in vars ==> st'[i] == this[i]
+        && st'.Keys == this.Keys
+        && forall v: Variable :: v in st'.Keys && v !in vars ==> st'[v] == this[v]
     }
 
-    ghost function EqOn(vars: set<Idx>) : iset<State>
-    {
-      iset st': State | 
-        && |st'| == |this|
-        && forall i: Idx :: i < |this| && i !in vars ==> st'[i] == this[i]
-    }
   }
 
-  function Tail(n: nat, ss: State): State {
-    if |ss| <= n then [] else ss[n..]
-  }
+  // function Tail(n: nat, ss: State): State {
+  //   if |ss| <= n then [] else ss[n..]
+  // }
 
-  ghost function UpdateSet(n: nat, post: iset<State>): iset<State> 
-  {
-    iset st: State | Tail(n, st) in post 
-  }
+  // ghost function UpdateSet(n: nat, post: iset<State>): iset<State> 
+  // {
+  //   iset st: State | Tail(n, st) in post 
+  // }
 
   ghost const AllStates: iset<State> := iset st: State | true
 
-  ghost function DeleteSet(n: nat, post: iset<State>): iset<State> {
-    iset st: State {:trigger} | exists st' <- post :: st == Tail(n, st')
-  }
+  // ghost function DeleteSet(n: nat, post: iset<State>): iset<State> {
+  //   iset st: State {:trigger} | exists st' <- post :: st == Tail(n, st')
+  // }
 
 }

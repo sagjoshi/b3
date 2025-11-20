@@ -18,11 +18,19 @@ module Model {
   datatype Literal = Literal(value: string, typ: Type)
   type FunctionSig = seq<Type>
   datatype Function = Function(name: string, sig: FunctionSig, resultType: Type)
-
+  
+  // TODO: module refinement for Any
   type Any(!new, ==)
 
   function {:axiom} Bot(): Any
 
+  function {:axiom} EmbedInt(x: int): Any
+
+  function {:axiom} EmbedBool(x: bool): Any
+
+  /**
+  lemmas about embedding and embedding back
+   */
 
   datatype PreModel = Model(
     inferType: Any -> Type,
