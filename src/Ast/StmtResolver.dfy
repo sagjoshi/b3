@@ -228,7 +228,7 @@ module StmtResolver {
 
       case LabeledStmt(lbl, body) =>
         if lbl in ls.labelMap {
-          return Failure("duplicate label name: " + lbl);
+          return Failure("shadowed label name: " + lbl);
         }
         var l := new Label(lbl);
         var b :- ResolveStmt(body, prs, ls.AddLabel(lbl, l));

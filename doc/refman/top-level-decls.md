@@ -225,7 +225,10 @@ returns `F..tag()` when applied to the result values of `F`. Applied to the `Dri
 The combination of `injective` and `tag` are useful in declaring what essentially are the constructors of
 algebraic datatypes. For example, to represent a type like
 
-    datatype List = Nil() | Cons(head: int, tail: List)
+```{code-block} text
+:class: italic-code
+datatype List = Nil() | Cons(head: int, tail: List)
+```
 
 from another programming language, one can in B3 declare
 
@@ -311,7 +314,9 @@ AExpression ::=
   | BlockStmt
 ```
 
-A declaration `procedure M(x: X)` introduces a procedure, which is a named signature with a pre- and postcondition
+A declaration `procedure M(x: X, inout y: Y, out z: Z)` introduces a procedure with an
+in-parameter `x`, an inout-parameter `y`, and an out-parameter `z`.
+A procedure is a named signature with a pre- and postcondition
 specification and an optional implementation body.
 
 * The name of the procedure must not be the same as any other procedure.
@@ -332,3 +337,14 @@ specification and an optional implementation body.
   and the `old` form of inout-parameters are immutable variables.
 
 The `BlockStmt` form of an `AExpression` is a restricted form of statements, described later.
+
+There are three parameter modes, in (denoted by the absence of the keywords `inout` and `out`), inout
+(denoted by `inout`), and out (denoted by `out`). In-parameters are passed by value from the caller
+to the callee, out-parameters are passed by value from the callee to the caller, and inout-parameters
+combine the two, passing a value from caller to callee and then passing a possibly different value
+back to the caller.
+
+For a description of auto-invariants, see {ref}`sec-autoinv`.
+
+If the procedure has a body, it is an error if a program trace reaches the end of the block when
+one of the postconditions does not hold.

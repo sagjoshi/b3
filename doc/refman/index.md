@@ -15,5 +15,6 @@ syntax
 top-level-decls
 statements
 expressions
+convenience
 semantics
 ```

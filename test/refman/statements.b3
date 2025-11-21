@@ -1,0 +1,65 @@
+// RUN: %b3 verify "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure Body()
+
+procedure While(b: bool) {
+// BEGIN While
+loop {
+  if !b {
+    exit
+  }
+  Body()
+}
+// END While
+}
+
+procedure DoWhile(b: bool) {
+// BEGIN DoWhile
+loop {
+  Body()
+  if !b {
+    exit
+  }
+}
+// END DoWhile
+}
+
+procedure Stmt0()
+procedure Stmt1()
+
+procedure Continue(b: bool, c: bool) {
+// BEGIN Continue
+loop {
+  ContinueLabel: {
+    if !b {
+      exit
+    }
+    Stmt0()
+    if c {
+      exit ContinueLabel
+    }
+    Stmt1()
+  }
+  // the "exit ContinueLabel" arrives here, just before the end of the iteration
+}
+// END Continue
+}
+
+procedure Handler()
+
+procedure LexicExceptionHandling(c: bool) {
+// BEGIN LexicExceptionHandling
+TryBlock: {
+  TryBody: {
+    Stmt0()
+    if c {
+      exit TryBody
+    }
+    Stmt1()
+    exit TryBlock // skip the handler
+  }
+  Handler()
+}
+// END LexicExceptionHandling
+}

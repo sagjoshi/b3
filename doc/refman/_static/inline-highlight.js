@@ -10,10 +10,12 @@ document.addEventListener('DOMContentLoaded', function() {
       // statements
       'var',
       'val',
+      'reinit',
       'exit',
       'return',
       'check',
       'assume',
+      'reach',
       'assert',
       'probe',
       'forall',

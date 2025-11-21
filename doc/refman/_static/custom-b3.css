@@ -18,3 +18,7 @@ code .b3-keyword {
 .admonition.tip .admonition-title::before {
     content: "💡";
 }
+
+.italic-code {
+   font-style: italic;
+}

@@ -13,10 +13,12 @@ b3_keywords = (
     # statements
     'var',
     'val',
+    'reinit',
     'exit',
     'return',
     'check',
     'assume',
+    'reach',
     'assert',
     'probe',
     'forall',
