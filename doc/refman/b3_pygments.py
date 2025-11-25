@@ -30,6 +30,9 @@ b3_keywords = (
     'exists',
     'false',
     'true',
+    'old',
+    'div',
+    'mod',
 )
 
 b3_types = (

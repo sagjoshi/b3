@@ -48,11 +48,16 @@ module ExprResolver {
           return Failure("custom literal is not allowed for a built-in type: " + PrintUtil.CustomLiteralToString(s, typeName));
         }
         r := CustomLiteral(s, typ);
-      case IdExpr(name) =>
-        if name !in varMap {
+      case IdExpr(name, isOld) =>
+        var encodedName := if isOld then Raw.OldName(name) else name;
+        if encodedName in varMap {
+          r := IdExpr(varMap[encodedName]);
+        } else if !isOld || name !in varMap {
           return Failure("undeclared variable: " + name);
+        } else {
+          var origVar := varMap[name];
+          return Failure("variable '" + name + "' cannot be used with 'old'; only inout-parameters can be, and only in two-state contexts");
         }
-        r := IdExpr(varMap[name]);
       case OperatorExpr(op, args) =>
         if |args| != op.ArgumentCount() {
           return Failure("operator " + op.ToString() + " expects " + Int2String(op.ArgumentCount()) + " arguments, got " + Int2String(|args|));

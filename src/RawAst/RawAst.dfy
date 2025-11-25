@@ -172,10 +172,17 @@ module RawAst {
     }
   }
 
-  const OldPrefix: string := "old$"
+  const OldPrefix: string := "old!"
 
   function OldName(name: string): string {
     OldPrefix + name
+  }
+
+  function FromOldName(name: string): Option<string> {
+    if OldPrefix <= name then
+      Some(name[|OldPrefix|..])
+    else
+      None
   }
 
   predicate LegalVariableName(name: string) {
@@ -434,7 +441,7 @@ module RawAst {
     | BLiteral(bvalue: bool)
     | ILiteral(ivalue: int)
     | CustomLiteral(s: string, typ: TypeName)
-    | IdExpr(name: string)
+    | IdExpr(name: string, isOld: bool := false)
     | OperatorExpr(op: Operator, args: seq<Expr>)
     | FunctionCallExpr(name: string, args: seq<Expr>)
     | LabeledExpr(name: string, expr: Expr)
@@ -446,7 +453,8 @@ module RawAst {
       case BLiteral(_) => true
       case ILiteral(_) => true
       case CustomLiteral(_, _) => true
-      case IdExpr(name) => name in scope
+      case IdExpr(name, isOld) =>
+        (if isOld then OldName(name) else name) in scope
       case OperatorExpr(_, args) =>
         forall e <- args :: e.WellFormed(b3, scope)
       case FunctionCallExpr(name, args) =>

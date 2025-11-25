@@ -1,0 +1,36 @@
+// RUN: %b3 verify "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+// BEGIN Airport
+type Airport
+tagger AirportTag for Airport
+
+function SEA(): Airport tag AirportTag
+function CFG(): Airport tag AirportTag
+function NBO(): Airport tag AirportTag
+// ...
+// END Airport
+
+// BEGIN real
+type real
+tagger realTag for real
+
+function Zero(): real tag realTag
+function Seventeen(): real tag realTag
+function OneHalf(): real tag realTag
+function r_12_508(): real tag realTag
+function Pi(): real tag realTag
+// ...
+// END real
+
+procedure CustomLiterals() {
+// BEGIN AirportExample
+check |ARN: Airport| == |ARN: Airport|
+// END AirportExample
+
+// Each of the following checks results in an error
+// BEGIN realExample
+check |three: real| == |3.0: real| // not provable
+check |three: real| != |3.0: real| // not provable
+// END realExample
+}

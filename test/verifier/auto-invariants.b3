@@ -5,8 +5,8 @@ function P(a: int, b: int): bool
 
 procedure TestAutoInvParameters(
   x: int autoinv P(x, y),
-  inout y: int autoinv P(old$y, y) && P(y, x),
-  out z: int autoinv P(z, y) && P(z, old$y) && P(z, x))
+  inout y: int autoinv P(old y, y) && P(y, x),
+  out z: int autoinv P(z, y) && P(z, old y) && P(z, x))
 {
   var prevZ := z
   y := y + 1
@@ -14,14 +14,14 @@ procedure TestAutoInvParameters(
 
   check P(x, y - 1) // by auto-invariant of x
   
-  check old$y == y - 1
+  check old y == y - 1
   check P(y - 1, y - 1) && P(y - 1, x) // by auto-invariant of y
   check P(y - 1, y) // error: auto-invariant of y has not been reapplied
   check P(y, x) // error: auto-invariant of y has not been reapplied
 
-  check P(prevZ, y - 1) && P(prevZ, old$y) && P(prevZ, x) // by auto-invariant of z
+  check P(prevZ, y - 1) && P(prevZ, old y) && P(prevZ, x) // by auto-invariant of z
   check P(300, y - 1) // error: auto-invariant of z has not been reapplied
-  check P(300, old$y) // error: auto-invariant of z has not been reapplied
+  check P(300, old y) // error: auto-invariant of z has not been reapplied
   check P(300, x) // error: auto-invariant of z has not been reapplied
 }
 
@@ -80,7 +80,7 @@ procedure TestAutoInvLocalsAgain(x: int)
 
 procedure TestLoops(
   x: int autoinv P(x, 10),
-  inout y: int autoinv P(old$y, y) && P(y, 20),
+  inout y: int autoinv P(old y, y) && P(y, 20),
   out z: int autoinv P(z, 30),
   n: int)
   requires 0 <= n
@@ -109,28 +109,28 @@ procedure TestLoops(
   check c == 15
   check a mod 2 == 0
   check P(x, 10)
-  check P(old$y, y) && P(y, 20)
+  check P(old y, y) && P(y, 20)
   check P(z, 30)
 }
 
 procedure Reinit(
   u: int autoinv P(u, u),
-  inout v: int autoinv P(old$v, v),
+  inout v: int autoinv P(old v, v),
   out w: int autoinv P(u, w))
 {
-  check P(u, u) && P(old$v, v) && P(u, w)
+  check P(u, u) && P(old v, v) && P(u, w)
 
   var x: int autoinv P(w, x)
   check P(w, x)
 
   v := v + 1
-  check P(old$v, v) // error
+  check P(old v, v) // error
 
   reinit v
-  check P(old$v, v)
+  check P(old v, v)
 
   reinit x, v, x, x, v, w
-  check P(u, u) && P(old$v, v) && P(u, w) && P(w, x)
+  check P(u, u) && P(old v, v) && P(u, w) && P(w, x)
 
   reinit x
   check P(w + 0, x)

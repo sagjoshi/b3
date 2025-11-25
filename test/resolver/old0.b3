@@ -1,0 +1,15 @@
+// RUN: %b3 resolve --rprint "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure P(x: int, inout y: int, out z: int)
+  requires y == 3
+  ensures y == old y
+{
+  assert old y == y
+  var origY := y
+  assert origY == y
+  assert origY == old y
+
+  var y := 12 // shadow the inout-parameter y
+  assert origY == old y // "old y" still refers to the inout-parameter
+}

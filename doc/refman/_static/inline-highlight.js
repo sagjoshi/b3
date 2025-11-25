@@ -27,6 +27,9 @@ document.addEventListener('DOMContentLoaded', function() {
       'exists',
       'false',
       'true',
+      'old',
+      'div',
+      'mod',
       // types
       'bool',
       'int',

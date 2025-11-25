@@ -1,0 +1,6 @@
+// RUN: %b3 resolve --rprint "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure U() {
+  assert old a == 3 // error: variable 'a' not found
+}

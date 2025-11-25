@@ -2,12 +2,12 @@
 
 function P(a: int, b: int): bool
 
-procedure TestAutoInvParameters(x: int autoinv P(x, y), inout y: int autoinv P(old$y, y) && P(y, x), out z: int autoinv P(z, y) && P(z, old$y) && P(z, x))
+procedure TestAutoInvParameters(x: int autoinv P(x, y), inout y: int autoinv P(old y, y) && P(y, x), out z: int autoinv P(z, y) && P(z, old y) && P(z, x))
 {
   return: {
     y := y + 1
     z := 300
-    check old$y == y - 1
+    check old y == y - 1
   }
 }
 

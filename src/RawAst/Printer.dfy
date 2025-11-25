@@ -346,7 +346,11 @@ module Printer {
     case BLiteral(value) => print value;
     case ILiteral(value) => print value;
     case CustomLiteral(s, typ) => print CustomLiteralToString(s, typ);
-    case IdExpr(name) => print name;
+    case IdExpr(name, isOld) =>
+      if isOld {
+        print "old ";
+      }
+      print name;
     case OperatorExpr(op, args) =>
       var opStrength := op.BindingStrength();
       Parenthesis(Left, opStrength, context);

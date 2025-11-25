@@ -1,0 +1,5 @@
+// RUN: %b3 resolve --rprint "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure R(x: int)
+  requires old x == 3 // error: 'old' can only be applied to inout-parameters

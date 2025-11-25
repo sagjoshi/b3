@@ -310,7 +310,11 @@ module ResolvedPrinter {
     case BLiteral(value) => print value;
     case ILiteral(value) => print value;
     case CustomLiteral(s, typ) => print CustomLiteralToString(s, typ.ToString());
-    case IdExpr(v) => print v.name;
+    case IdExpr(v) =>
+      match Raw.FromOldName(v.name) {
+        case None => print v.name;
+        case Some(origName) => print "old ", origName;
+      }
     case OperatorExpr(op, args) =>
       var opStrength := op.BindingStrength();
       Parenthesis(Side.Left, opStrength, context);

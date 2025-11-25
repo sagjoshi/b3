@@ -543,12 +543,13 @@ module Parser {
       T("true").M(_ => BLiteral(true)),
       Nat.I_e(W).M(n => ILiteral(n)),
       Sym("|").e_I(parseCustomLiteral).I_e(Sym(":")).I_I(parseType).I_e(Sym("|")).M2(MId, (lit, typ) => CustomLiteral(lit, typ)),
+      T("old").e_I(parseId).M(name => IdExpr(name, true)),
       parseId.Then(name =>
         Or([
           Sym("(").e_I(parseCommaDelimitedSeq(c("expr"))).I_e(Sym(")"))
             .M(args => FunctionCallExpr(name, args)),
           Sym(":").e_I(c("expr")).M(e => LabeledExpr(name, e)),
-          Nothing.M(_ => IdExpr(name))
+          Nothing.M(_ => IdExpr(name, false))
         ])),
       Sym("(").e_I(c("expr")).I_e(Sym(")"))
     ])

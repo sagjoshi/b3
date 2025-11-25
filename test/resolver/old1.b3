@@ -1,0 +1,5 @@
+// RUN: %b3 resolve --rprint "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+procedure Q(inout y: int)
+  requires old y == 3 // error: cannot use 'old' here

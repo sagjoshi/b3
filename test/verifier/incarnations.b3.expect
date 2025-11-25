@@ -26,7 +26,7 @@ Verifying Test ...
   m:
     inoutFormal := b%0
     outFormal := c%0
-    old$inoutFormal := b
+    old!inoutFormal := b
     inFormal := inFormal
 ==== Incarnations: after call
   nextSequenceCount:

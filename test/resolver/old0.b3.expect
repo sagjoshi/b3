@@ -1,0 +1,15 @@
+// Resolved B3 program
+
+procedure P(x: int, inout y: int, out z: int)
+  requires y == 3
+  ensures y == old y
+{
+  return: {
+    assert old y == y
+    var origY: int := y
+    assert origY == y
+    assert origY == old y
+    var y: int := 12
+    assert origY == old y
+  }
+}
