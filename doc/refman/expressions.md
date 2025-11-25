@@ -115,7 +115,61 @@ UnaryOp ::=
   | "!" | "-"
 ```
 
-Unary operators have higher binding power than any binary operator.
+The ternary operator expression `if b e0 else e1` evaluates to `e0` if `b` evaluates to `true` and
+evaluates to `e1` if `b` evaluates to `false`. The type of `b` must be `bool`, and the types of
+expressions `e0` and `e1` must be the same.
+
+Binary and unary expressions are parsed according to precedence and associativity rules.
+The unary operators have the highest binding power. The following table lists the
+binding powers of binary operators, from lowest to highest:
+
+| operators | associativity |
+|----------|----------|
+| `<==>` | associative |
+| `==>`  `<==` | `==>` associates to the right,<br>`<==` associates to the left,<br>the two different operators do not associate with each other |
+| `&&`  `\|\|` | associative,<br>the two different operators do not associate with each other |
+| `==`  `!=`  `<`  `<=`  `>=`  `>` | not associative |
+| `+`  `-` | left associative |
+| `*`  `div`  `mod` | left associative |
+
+Here are descriptions of these operators and their type signatures:
+
+| operators | type | description |
+|----------|----------|----------|
+| `<==>` | `bool` $\times$ `bool` $\to$ `\bool` | boolean equivalence, aka boolean equality, aka "if and only if" |
+| `==>`  | `bool` $\times$ `bool` $\to$ `\bool` | logical implication |
+| `<==`  | `bool` $\times$ `bool` $\to$ `\bool` | reverse implication (that is, `A ==> B` is the same as `B <== A`) |
+| `&&`   | `bool` $\times$ `bool` $\to$ `\bool` | logical conjunction, aka "and" |
+| `\|\|` | `bool` $\times$ `bool` $\to$ `\bool` | logical disjunction, aka "or" |
+| `==`   | $\alpha \times \alpha \to$ `\bool` | equality |
+| `!=`   | $\alpha \times \alpha \to$ `\bool` | disequality, aka "not equal" |
+| `<`  `<=`  `>=`  `>` | `int` $\times$ `int` $\to$ `bool` | less, at most, at least, greater |
+| `+`    | `int` $\times$ `int` $\to$ `int` | addition |
+| `-`    | `int` $\times$ `int` $\to$ `int` | subtraction |
+| `*`    | `int` $\times$ `int` $\to$ `int` | multiplication |
+| `div`  | `int` $\times$ `int` $\to$ `int` | Euclidean division |
+| `mod`  | `int` $\times$ `int` $\to$ `int` | Euclidean modulo |
+
+Notes:
+
+* In the table above, $\alpha$ can be any type, but it has to be the same for both operands.
+
+* The comparison operators are not chaining.[^fn-chaining]
+
+* Like all functions and expressions in B3, `div` and `mod` are total, and in particular they
+    give an integer result even when the divisor (the second argument) is `0`. When the divisor is `0`,
+    `div` and `mod` each gives a result that is a function of its first argument, but B3 intentionally
+    omits any further specification of the value.[^fn-div-mod-underspecified]
+
+* Operators `div` and `mod` use Euclidean division and modulo.
+    This is also what Dafny, Boogie, and SMT-LIB use,
+    but is different from the _truncated_ division and modulo that, for example, Java and C use.
+    See wikipedia for more information about
+    Euclidean [division](https://en.wikipedia.org/wiki/Euclidean_division) and [modulo](https://en.wikipedia.org/wiki/Modulo).
+
+[^fn-chaining]: unlike comparison operators in Dafny
+
+[^fn-div-mod-underspecified]: this is also what Boogie and SMT-LIB do
 
 ## Function calls
 
