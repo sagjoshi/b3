@@ -1,0 +1,15 @@
+// RUN: b3 resolve %s
+// Test that closure elaboration returns appropriate error
+// Expected output: "closure elaboration not yet fully implemented"
+function F(): int
+
+procedure TestClosureElaboration()
+{
+  var x := lift
+    %val := 42
+  into
+    %r: int
+  by {
+    %r == F()
+  }
+}

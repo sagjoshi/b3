@@ -35,6 +35,7 @@ module ExprResolver {
   method ResolveExpr(expr: Raw.Expr, ers: ExprResolverState, varMap: map<string, Variable>) returns (result: Result<Expr, string>)
     ensures result.Success? ==> expr.WellFormed(ers.b3, varMap.Keys)
     ensures result.Success? ==> result.value.WellFormed()
+    decreases expr, 1
   {
     var r: Expr;
     match expr {
@@ -118,6 +119,8 @@ module ExprResolver {
         var trs :- ResolvePatterns(patterns, ers, varMap');
         var _ :- CheckPatterns(trs, boundVars);
         r := QuantifierExpr(univ, boundVars, trs, b);
+      case ClosureExpr(closureBindings, resultVar, resultType, properties) =>
+        r :- ElaborateClosure(expr, ers, varMap);
     }
     return Success(r);
   }
@@ -186,5 +189,23 @@ module ExprResolver {
     case LetExpr(v, rhs, body) =>
       ContainsQuantifiers(rhs) || ContainsQuantifiers(body)
     case QuantifierExpr(_, _, _, _) => true
+    case ClosureExpr(_, _, _, _) => false  // Closures are elaborated away before this check
+  }
+
+  // ===== Closure Elaboration =====
+
+  // Stub: Closure elaboration not yet implemented
+  // TODO: Implement full elaboration
+  method ElaborateClosure(
+    closure: Raw.Expr,
+    ers: ExprResolverState,
+    varMap: map<string, Variable>
+  ) returns (result: Result<Expr, string>)
+    requires closure.ClosureExpr?
+    ensures result.Success? ==> closure.WellFormed(ers.b3, varMap.Keys)
+    ensures result.Success? ==> result.value.WellFormed()
+    decreases closure, 0
+  {
+    return Failure("closure elaboration not yet fully implemented");
   }
 }

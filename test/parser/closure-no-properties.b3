@@ -1,0 +1,16 @@
+// RUN: %b3 parse --print "%s" > "%t"
+// RUN: %diff "%s.expect" "%t"
+
+// Edge case: closure with no properties
+procedure TestNoProperties()
+{
+  var x: int
+  
+  // Closure with no properties (edge case)
+  var result := lift
+    %val := x
+  into
+    %r: int
+  by {
+  }
+}

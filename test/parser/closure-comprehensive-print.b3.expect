@@ -1,0 +1,5 @@
+Error:
+76:     %empty: int
+        ^
+expected ':='
+
